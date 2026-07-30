@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import type { CompanyInfo, ConsultationInfo, ContractInfo, RiskProfile } from "@/lib/types";
+import { addDays, toISODate } from "@/lib/date";
 
 const initialCompanyInfo: CompanyInfo = {
   companyType: "export",
@@ -23,6 +24,21 @@ const initialContractInfo: ContractInfo = {
   bep: 1320,
   dueDateAdjustable: true,
 };
+
+/**
+ * Builds a fresh contract default: signed 30 days ago, due 90 days from now.
+ * Computed once per call (initial render, and again on reset()) so the demo
+ * always shows an already-signed contract due a few months out, regardless
+ * of when the app is actually run.
+ */
+function defaultContract(): ContractInfo {
+  const today = new Date();
+  return {
+    ...initialContractInfo,
+    priceFixDate: toISODate(addDays(today, -30)),
+    dueDate: toISODate(addDays(today, 90)),
+  };
+}
 
 const initialRiskProfile: RiskProfile = {
   maxLossTolerance: null,
@@ -60,7 +76,7 @@ const WizardContext = createContext<WizardContextValue | null>(null);
 
 export function WizardProvider({ children }: { children: ReactNode }) {
   const [company, setCompanyState] = useState<CompanyInfo>(initialCompanyInfo);
-  const [contract, setContractState] = useState<ContractInfo>(initialContractInfo);
+  const [contract, setContractState] = useState<ContractInfo>(defaultContract);
   const [riskProfile, setRiskProfileState] = useState<RiskProfile>(initialRiskProfile);
   const [consultation, setConsultationState] = useState<ConsultationInfo>(initialConsultationInfo);
   const [consultationSubmitted, setConsultationSubmitted] = useState<{ id: string } | null>(null);
@@ -87,7 +103,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       },
       reset: () => {
         setCompanyState(initialCompanyInfo);
-        setContractState(initialContractInfo);
+        setContractState(defaultContract());
         setRiskProfileState(initialRiskProfile);
         setConsultationState(initialConsultationInfo);
         setConsultationSubmitted(null);
