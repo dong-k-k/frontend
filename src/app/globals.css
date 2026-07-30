@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+:root {
+  --color-page: #faf9f5;
+  --color-surface: #ffffff;
+
+  --color-ink: #545045;
+  --color-ink-soft: #60584c;
+  --color-muted: #898989;
+  --color-faint: #c7bfae;
+  --color-disabled: #d8d2c4;
+
+  --color-border: #e7e2d8;
+  --color-border-soft: #efebe2;
+
+  --color-accent: #ffb400;
+  --color-accent-done: #ffcc00;
+  --color-accent-soft: #fffbf0;
+  --color-accent-softer: #fff9eb;
+
+  --color-warning-bg: #fff3d6;
+  --color-warning-text: #8c7046;
+
+  --color-chip: #f4efe4;
+
+  --color-danger: #b23b2e;
+
+  --color-risk-bg: #fef3ec;
+  --color-risk-text: #b25a2e;
+  --color-risk-border: #f0c9a8;
+  --color-risk-solid: #f0a05c;
+
+  --color-success: #4a9e6e;
+  --color-success-bg: #e5f1e9;
+  --color-success-text: #2e7d50;
+}
+
+@theme inline {
+  --color-page: var(--color-page);
+  --color-surface: var(--color-surface);
+  --color-ink: var(--color-ink);
+  --color-ink-soft: var(--color-ink-soft);
+  --color-muted: var(--color-muted);
+  --color-faint: var(--color-faint);
+  --color-disabled: var(--color-disabled);
+  --color-border: var(--color-border);
+  --color-border-soft: var(--color-border-soft);
+  --color-accent: var(--color-accent);
+  --color-accent-done: var(--color-accent-done);
+  --color-accent-soft: var(--color-accent-soft);
+  --color-accent-softer: var(--color-accent-softer);
+  --color-warning-bg: var(--color-warning-bg);
+  --color-warning-text: var(--color-warning-text);
+  --color-chip: var(--color-chip);
+  --color-danger: var(--color-danger);
+  --color-risk-bg: var(--color-risk-bg);
+  --color-risk-text: var(--color-risk-text);
+  --color-risk-border: var(--color-risk-border);
+  --color-risk-solid: var(--color-risk-solid);
+  --color-success: var(--color-success);
+  --color-success-bg: var(--color-success-bg);
+  --color-success-text: var(--color-success-text);
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, "Malgun Gothic", sans-serif;
+}
+
+body {
+  background: var(--color-page);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.animate-spin-slow {
+  animation: spin-slow 0.9s linear infinite;
+}
