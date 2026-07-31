@@ -56,36 +56,86 @@ function riskGradeFrom(esAbsPct: number, safetyMarginPct: number): RiskGrade {
   return "LOW";
 }
 
-/**
- * Computes a demo risk analysis for a contract.
- *
- * Statistical figures (ES%, max loss) use a simplified parametric approach —
- * a fixed assumed annualized volatility scaled by sqrt(time) — rather than a
- * real historical-data model. Exposure, BEP margin and business-day figures
- * are computed directly from the entered contract, not sampled.
- */
-export function computeAnalysis(contract: ContractInfo, today: Date = new Date()): AnalysisResult {
-  const currentRate = MOCK_CURRENT_RATE;
-  const netExposureForeign = contract.amount ?? 0;
-  const netExposureKrw = netExposureForeign * currentRate;
+interface ScheduleRisk {
+  exposureKrw: number;
+  bep: number;
+  bepIsEstimated: boolean;
+  bepSafetyMarginPct: number;
+  remainingBusinessDays: number;
+  maxLossKrw: number;
+}
 
-  const bepIsEstimated = contract.bep == null;
-  const bep =
-    contract.bep ??
-    (contract.contractType === "export" ? currentRate * 0.978 : currentRate * 1.022);
+function computeScheduleRisk(
+  contractType: ContractInfo["contractType"],
+  schedule: ContractInfo["paymentSchedules"][number],
+  currentRate: number,
+  today: Date,
+): ScheduleRisk {
+  const exposureKrw = (schedule.amount ?? 0) * currentRate;
+
+  const bepIsEstimated = schedule.bep == null;
+  const bep = schedule.bep ?? (contractType === "export" ? currentRate * 0.978 : currentRate * 1.022);
 
   const bepSafetyMarginPct =
-    contract.contractType === "export"
+    contractType === "export"
       ? ((currentRate - bep) / currentRate) * 100
       : ((bep - currentRate) / currentRate) * 100;
 
-  const dueDate = contract.dueDate ? new Date(contract.dueDate) : today;
+  const dueDate = schedule.dueDate ? new Date(schedule.dueDate) : today;
   const remainingBusinessDays = businessDaysBetween(today, dueDate);
 
   const dailyVol = ASSUMED_ANNUAL_VOL_PCT / 100 / Math.sqrt(TRADING_DAYS_PER_YEAR);
   const horizonVol = dailyVol * Math.sqrt(Math.max(remainingBusinessDays, 1));
   const esPct = -(horizonVol * ES_975_MULTIPLIER * 100);
-  const maxLossKrw = netExposureKrw * (esPct / 100);
+  const maxLossKrw = exposureKrw * (esPct / 100);
+
+  return { exposureKrw, bep, bepIsEstimated, bepSafetyMarginPct, remainingBusinessDays, maxLossKrw };
+}
+
+/**
+ * Computes a demo risk analysis for a contract with one or more payment schedules.
+ *
+ * Statistical figures (ES%, max loss) use a simplified parametric approach —
+ * a fixed assumed annualized volatility scaled by sqrt(time) — rather than a
+ * real historical-data model. Exposure, BEP margin and business-day figures
+ * are computed directly from the entered contract, not sampled.
+ *
+ * When a contract has multiple payment schedules (split/installment payments),
+ * each schedule's risk is computed independently and then aggregated:
+ * exposure and max loss are summed, the headline ES% is backed out from that
+ * sum (so it stays consistent with the totals), the BEP shown is the
+ * schedule with the tightest safety margin (the one closest to breach), and
+ * the remaining-business-days figure reflects the next upcoming payment.
+ */
+export function computeAnalysis(contract: ContractInfo, today: Date = new Date()): AnalysisResult {
+  const currentRate = MOCK_CURRENT_RATE;
+  const schedules = contract.paymentSchedules;
+
+  const perSchedule = schedules.map((schedule) =>
+    computeScheduleRisk(contract.contractType, schedule, currentRate, today),
+  );
+
+  const netExposureForeign = schedules.reduce((sum, s) => sum + (s.amount ?? 0), 0);
+  const netExposureKrw = perSchedule.reduce((sum, s) => sum + s.exposureKrw, 0);
+  const maxLossKrw = perSchedule.reduce((sum, s) => sum + s.maxLossKrw, 0);
+  const esPct = netExposureKrw !== 0 ? (maxLossKrw / netExposureKrw) * 100 : 0;
+
+  const worst = perSchedule.reduce(
+    (a, b) => (b.bepSafetyMarginPct < a.bepSafetyMarginPct ? b : a),
+    perSchedule[0] ?? {
+      exposureKrw: 0,
+      bep: currentRate,
+      bepIsEstimated: true,
+      bepSafetyMarginPct: 0,
+      remainingBusinessDays: 0,
+      maxLossKrw: 0,
+    },
+  );
+  const bep = worst.bep;
+  const bepIsEstimated = perSchedule.some((s) => s.bepIsEstimated);
+  const bepSafetyMarginPct = worst.bepSafetyMarginPct;
+  const remainingBusinessDays =
+    perSchedule.length > 0 ? Math.min(...perSchedule.map((s) => s.remainingBusinessDays)) : 0;
 
   const riskGrade = riskGradeFrom(Math.abs(esPct), bepSafetyMarginPct);
   const breachMoveKrw = Math.abs(currentRate - bep);
@@ -110,7 +160,30 @@ export function computeAnalysis(contract: ContractInfo, today: Date = new Date()
     riskGrade,
     breachMoveKrw,
     scenarios,
+    scheduleCount: schedules.length,
   };
+}
+
+/** First schedule's currency, used as the contract's representative currency for display. */
+export function primaryCurrency(contract: ContractInfo): string {
+  return contract.paymentSchedules[0]?.currency ?? "USD";
+}
+
+/** Earliest 계약·가격 확정일 across all payment schedules. */
+export function earliestPriceFixDate(contract: ContractInfo): string {
+  const dates = contract.paymentSchedules.map((s) => s.priceFixDate).filter(Boolean).sort();
+  return dates[0] ?? "";
+}
+
+/** Nearest upcoming 결제 예정일 across all payment schedules. */
+export function nearestDueDate(contract: ContractInfo): string {
+  const dates = contract.paymentSchedules.map((s) => s.dueDate).filter(Boolean).sort();
+  return dates[0] ?? "";
+}
+
+/** True only if every payment schedule's due date is adjustable. */
+export function allDueDatesAdjustable(contract: ContractInfo): boolean {
+  return contract.paymentSchedules.length > 0 && contract.paymentSchedules.every((s) => s.dueDateAdjustable);
 }
 
 export const RISK_GRADE_LABEL: Record<RiskGrade, string> = {

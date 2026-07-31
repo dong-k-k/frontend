@@ -8,7 +8,14 @@ import { FieldLabel } from "@/components/ui/Field";
 import { PillOptions } from "@/components/ui/OptionCards";
 import { TextInput, Select } from "@/components/ui/Input";
 import { useWizard } from "@/context/wizard-context";
-import { computeAnalysis, formatDateDots, formatNumber, RISK_GRADE_LABEL } from "@/lib/risk";
+import {
+  computeAnalysis,
+  formatDateDots,
+  formatNumber,
+  nearestDueDate,
+  primaryCurrency,
+  RISK_GRADE_LABEL,
+} from "@/lib/risk";
 import type { ContactMethod, SettlementMethod } from "@/lib/types";
 
 const CONTACT_METHODS: { value: ContactMethod; label: string }[] = [
@@ -147,8 +154,14 @@ export default function ConsultationPage() {
             value={recentPerformanceUsd ? `USD ${formatNumber(recentPerformanceUsd)}` : "미입력"}
           />
           <SummaryRow label="계약 유형" value={contract.contractType === "export" ? "수출계약" : "수입계약"} />
-          <SummaryRow label="계약 통화·금액" value={`${contract.currency} ${formatNumber(contract.amount ?? 0)}`} />
-          <SummaryRow label="결제일" value={formatDateDots(contract.dueDate)} />
+          <SummaryRow
+            label="계약 통화·금액"
+            value={`${primaryCurrency(contract)} ${formatNumber(analysis.netExposureForeign)}`}
+          />
+          <SummaryRow label="결제일" value={formatDateDots(nearestDueDate(contract))} />
+          {contract.paymentSchedules.length > 1 && (
+            <SummaryRow label="결제 일정" value={`분할 ${contract.paymentSchedules.length}건`} />
+          )}
           <SummaryRow label="결제 방식" value={SETTLEMENT_LABEL[contract.settlementMethod]} />
           <SummaryRow label="위험 등급" value={RISK_GRADE_LABEL[analysis.riskGrade]} tone="danger" />
           <SummaryRow label="Expected Shortfall" value={`${formatNumber(Math.abs(analysis.esPct), 1)}%`} />

@@ -5,7 +5,15 @@ import { Shell, ShellHeader } from "@/components/ui/Shell";
 import { LinkButton } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { useWizard } from "@/context/wizard-context";
-import { computeAnalysis, formatDateDots, formatKrw, formatNumber, RISK_GRADE_LABEL } from "@/lib/risk";
+import {
+  allDueDatesAdjustable,
+  computeAnalysis,
+  formatDateDots,
+  formatKrw,
+  formatNumber,
+  nearestDueDate,
+  RISK_GRADE_LABEL,
+} from "@/lib/risk";
 import {
   deriveProfileLabel,
   hedgeTargetRangeLabel,
@@ -45,7 +53,7 @@ export default function RecommendationsPage() {
           <Badge>성향 {profileLabel}</Badge>
           <Badge>헤지목표 {hedgeTargetRangeLabel(analysis.riskGrade)}</Badge>
           <Badge>순노출 {formatKrw(analysis.netExposureKrw)}</Badge>
-          <Badge>결제일 {formatDateDots(contract.dueDate)}</Badge>
+          <Badge>결제일 {formatDateDots(nearestDueDate(contract))}</Badge>
         </div>
 
         <div className="mb-6 rounded-xl border border-border-soft px-5 py-4.5">
@@ -54,7 +62,7 @@ export default function RecommendationsPage() {
           <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted">
             근거: BEP 안전여유율 {analysis.bepSafetyMarginPct <= 3 ? "낮음" : "충분"} · 결제일까지{" "}
             {analysis.remainingBusinessDays}영업일 · 예상 손실률 {formatNumber(Math.abs(analysis.esPct), 1)}% ·{" "}
-            {profileLabel} 성향 · 결제일 조정 {contract.dueDateAdjustable ? "가능" : "불가능"}
+            {profileLabel} 성향 · 결제일 조정 {allDueDatesAdjustable(contract) ? "가능" : "불가능"}
           </div>
         </div>
 

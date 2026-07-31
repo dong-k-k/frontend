@@ -7,10 +7,13 @@ import { Badge } from "@/components/ui/Badge";
 import { useWizard } from "@/context/wizard-context";
 import {
   computeAnalysis,
+  earliestPriceFixDate,
   formatDateDots,
   formatKrw,
   formatNumber,
   formatSignedKrw,
+  nearestDueDate,
+  primaryCurrency,
   RISK_GRADE_LABEL,
 } from "@/lib/risk";
 
@@ -46,7 +49,14 @@ export default function ResultPage() {
     <Shell width="lg">
       <ShellHeader step={2} />
       <div className="px-10 py-8">
-        <h2 className="mb-3.5 text-xl font-bold text-ink">환율 리스크 진단 결과</h2>
+        <h2 className={analysis.scheduleCount > 1 ? "mb-1 text-xl font-bold text-ink" : "mb-3.5 text-xl font-bold text-ink"}>
+          환율 리스크 진단 결과
+        </h2>
+        {analysis.scheduleCount > 1 && (
+          <p className="mb-3.5 text-[12px] text-muted">
+            결제 정보 카드 {analysis.scheduleCount}건(분할 결제)의 금액과 일정을 합산한 결과입니다.
+          </p>
+        )}
 
         <div className={"mb-5 rounded-xl border px-5 py-4 " + boxTone}>
           <Badge variant={RISK_BADGE_VARIANT[analysis.riskGrade]}>
@@ -64,13 +74,16 @@ export default function ResultPage() {
           <StatCard label="현재 환율" value={`${formatNumber(analysis.currentRate, 2)}원`} />
           <StatCard
             label="순노출 외화금액"
-            value={`${contract.currency} ${formatNumber(analysis.netExposureForeign)}`}
+            value={`${primaryCurrency(contract)} ${formatNumber(analysis.netExposureForeign)}`}
           />
           <StatCard label="순노출 원화 환산액" value={formatKrw(analysis.netExposureKrw)} />
-          <StatCard label="손익분기 환율(BEP)" value={`${formatNumber(analysis.bep, 2)}원`} />
+          <StatCard
+            label={analysis.scheduleCount > 1 ? "손익분기 환율(최소 여유율 기준)" : "손익분기 환율(BEP)"}
+            value={`${formatNumber(analysis.bep, 2)}원`}
+          />
           <StatCard label="남은 영업일" value={`${analysis.remainingBusinessDays}영업일`} />
-          <StatCard label="계약·가격 확정일" value={formatDateDots(contract.priceFixDate)} />
-          <StatCard label="결제 예정일" value={formatDateDots(contract.dueDate)} />
+          <StatCard label="계약·가격 확정일" value={formatDateDots(earliestPriceFixDate(contract))} />
+          <StatCard label="결제 예정일" value={formatDateDots(nearestDueDate(contract))} />
           <StatCard label="BEP 안전여유율" value={`${formatNumber(analysis.bepSafetyMarginPct, 1)}%`} />
           <StatCard
             label="97.5% ES 변동률"
@@ -102,7 +115,7 @@ export default function ResultPage() {
             </svg>
             <div className="text-[10.5px] leading-relaxed text-muted">
               실선: 일별 환율 · 노란 밴드: 97.5% 예상 범위 · 빨간선: BEP({formatNumber(analysis.bep, 0)}원) · 데이터
-              기준일 {formatDateDots(contract.dueDate)} · 출처: 서울외국환중개
+              기준일 {formatDateDots(nearestDueDate(contract))} · 출처: 서울외국환중개
             </div>
           </div>
           <div className="rounded-xl border border-border-soft p-4">

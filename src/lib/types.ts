@@ -14,16 +14,22 @@ export interface CompanyInfo {
 export type ContractType = "export" | "import";
 export type SettlementMethod = "TT" | "LC" | "DP" | "DA";
 
-export interface ContractInfo {
-  contractType: ContractType;
-  countryCode: string;
-  settlementMethod: SettlementMethod;
+export interface PaymentSchedule {
+  id: string;
   amount: number | null;
   currency: string;
   priceFixDate: string;
   dueDate: string;
   bep: number | null;
   dueDateAdjustable: boolean;
+}
+
+export interface ContractInfo {
+  contractType: ContractType;
+  countryCode: string;
+  settlementMethod: SettlementMethod;
+  /** One entry per payment. Index 0 ("결제 정보 카드 1") is always required and cannot be removed. */
+  paymentSchedules: PaymentSchedule[];
 }
 
 export type MaxLossTolerance = "UNDER_2" | "BETWEEN_2_5" | "OVER_5";
@@ -71,4 +77,6 @@ export interface AnalysisResult {
   riskGrade: RiskGrade;
   breachMoveKrw: number;
   scenarios: ScenarioRow[];
+  /** Number of payment schedules (결제 정보 카드) this analysis aggregates. */
+  scheduleCount: number;
 }
