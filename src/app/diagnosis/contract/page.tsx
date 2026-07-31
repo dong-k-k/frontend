@@ -8,7 +8,7 @@ import { FieldLabel, RequiredTag, SectionLabel } from "@/components/ui/Field";
 import { OptionCards, PillOptions } from "@/components/ui/OptionCards";
 import { NumberInput, DateInput, Select } from "@/components/ui/Input";
 import { useWizard } from "@/context/wizard-context";
-import { COUNTRIES, findCountry } from "@/lib/countries";
+import { COUNTRIES } from "@/lib/countries";
 import type {
   ContractType,
   PaymentSchedule,
@@ -22,9 +22,9 @@ const CONTRACT_TYPES: { value: ContractType; label: string }[] = [
 
 const SETTLEMENT_METHODS: { value: SettlementMethod; label: string }[] = [
   { value: "TT", label: "T/T 송금" },
-  { value: "LC", label: "L/C 신용장 ⓘ" },
-  { value: "DP", label: "D/P ⓘ" },
-  { value: "DA", label: "D/A ⓘ" },
+  { value: "LC", label: "L/C 신용장" },
+  { value: "DP", label: "D/P" },
+  { value: "DA", label: "D/A" },
 ];
 
 function PaymentScheduleCard({
@@ -122,7 +122,6 @@ export default function ContractInfoPage() {
   const {
     contract,
     setContract,
-    setCountryAndCurrency,
     addPaymentSchedule,
     removePaymentSchedule,
     updatePaymentSchedule,
@@ -171,14 +170,11 @@ export default function ContractInfoPage() {
             </FieldLabel>
             <Select
               value={contract.countryCode}
-              onChange={(countryCode) => {
-                const country = findCountry(countryCode);
-                setCountryAndCurrency(countryCode, country.currency);
-              }}
+              onChange={(countryCode) => setContract({ countryCode })}
             >
               {COUNTRIES.map((c) => (
                 <option key={c.code} value={c.code}>
-                  {c.flag} {c.code} — {c.name}
+                  {c.code} — {c.name}
                 </option>
               ))}
             </Select>

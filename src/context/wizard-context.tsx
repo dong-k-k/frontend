@@ -81,7 +81,6 @@ interface WizardContextValue {
   setCompany: (patch: Partial<CompanyInfo>) => void;
   contract: ContractInfo;
   setContract: (patch: Partial<ContractInfo>) => void;
-  setCountryAndCurrency: (countryCode: string, currency: string) => void;
   addPaymentSchedule: () => void;
   removePaymentSchedule: (id: string) => void;
   updatePaymentSchedule: (id: string, patch: Partial<PaymentSchedule>) => void;
@@ -109,12 +108,6 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       setCompany: (patch) => setCompanyState((prev) => ({ ...prev, ...patch })),
       contract,
       setContract: (patch) => setContractState((prev) => ({ ...prev, ...patch })),
-      setCountryAndCurrency: (countryCode, currency) =>
-        setContractState((prev) => ({
-          ...prev,
-          countryCode,
-          paymentSchedules: prev.paymentSchedules.map((s) => ({ ...s, currency })),
-        })),
       addPaymentSchedule: () =>
         setContractState((prev) => ({
           ...prev,
