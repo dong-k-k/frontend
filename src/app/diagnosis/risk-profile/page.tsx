@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Shell, ShellHeader, ShellFooter } from "@/components/ui/Shell";
 import { LinkButton, Button } from "@/components/ui/Button";
 import { SectionLabel } from "@/components/ui/Field";
 import { OptionCards } from "@/components/ui/OptionCards";
 import { useWizard } from "@/context/wizard-context";
+import { createRiskProfile, ApiError } from "@/lib/api";
 import type { HedgeManagementStyle, KrwCertaintyPreference, MaxLossTolerance } from "@/lib/types";
 
 const Q1: { value: MaxLossTolerance; label: string }[] = [
@@ -27,9 +28,16 @@ const Q3: { value: HedgeManagementStyle; label: string }[] = [
   { value: "REACT_AS_NEEDED", label: "필요할 때만 대응" },
 ];
 
+// 백엔드는 각 문항 점수를 0~2 범위로만 허용합니다 (app/risk_profile/schemas.py: Field(ge=0, le=2)).
+const Q1_SCORE: Record<MaxLossTolerance, number> = { UNDER_2: 0, BETWEEN_2_5: 1, OVER_5: 2 };
+const Q2_SCORE: Record<KrwCertaintyPreference, number> = { FULL_LOCK: 0, PARTIAL_LOCK: 1, KEEP_UPSIDE: 2 };
+const Q3_SCORE: Record<HedgeManagementStyle, number> = { SET_AND_HOLD: 0, ADJUST_GRADUALLY: 1, REACT_AS_NEEDED: 2 };
+
 export default function RiskProfilePage() {
   const router = useRouter();
-  const { riskProfile, setRiskProfile } = useWizard();
+  const { contract, riskProfile, setRiskProfile, server, setServer } = useWizard();
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const canProceed = useMemo(
     () =>
@@ -38,6 +46,33 @@ export default function RiskProfilePage() {
       ),
     [riskProfile],
   );
+
+  const handleSubmit = async () => {
+    if (!riskProfile.maxLossTolerance || !riskProfile.krwCertaintyPreference || !riskProfile.hedgeManagementStyle) {
+      return;
+    }
+    const primaryScheduleId = contract.paymentSchedules[0]?.id;
+    const settlementId = primaryScheduleId ? server.settlementIdByScheduleId[primaryScheduleId] : undefined;
+    if (!settlementId) {
+      setSubmitError("계약 정보가 저장되지 않았습니다. 이전 단계부터 다시 진행해주세요.");
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const response = await createRiskProfile(settlementId, {
+        q1: Q1_SCORE[riskProfile.maxLossTolerance],
+        q2: Q2_SCORE[riskProfile.krwCertaintyPreference],
+        q3: Q3_SCORE[riskProfile.hedgeManagementStyle],
+      });
+      setServer({ riskProfileId: response.id, riskProfileResult: response });
+      router.push("/diagnosis/recommendations");
+    } catch (e) {
+      setSubmitError(e instanceof ApiError ? e.message : "리스크 성향 진단 중 오류가 발생했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <Shell>
@@ -76,6 +111,7 @@ export default function RiskProfilePage() {
             onChange={(hedgeManagementStyle) => setRiskProfile({ hedgeManagementStyle })}
           />
         </div>
+        {submitError && <p className="text-xs text-danger">{submitError}</p>}
       </div>
       <ShellFooter
         left={
@@ -84,8 +120,8 @@ export default function RiskProfilePage() {
           </LinkButton>
         }
         right={
-          <Button disabled={!canProceed} onClick={() => router.push("/diagnosis/recommendations")}>
-            AI 전략 추천받기
+          <Button disabled={!canProceed || submitting} onClick={handleSubmit}>
+            {submitting ? "저장 중..." : "AI 전략 추천받기"}
           </Button>
         }
       />

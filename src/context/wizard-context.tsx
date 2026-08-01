@@ -3,8 +3,18 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import type { CompanyInfo, ConsultationInfo, ContractInfo, PaymentSchedule, RiskProfile } from "@/lib/types";
 import { addDays, toISODate } from "@/lib/date";
+import type {
+  ProductMatchItem,
+  RiskAssessmentResponse,
+  RiskProfileResponse,
+  StrategyMixItem,
+  ApiConsultationStatus,
+} from "@/lib/api/types";
 
 const initialCompanyInfo: CompanyInfo = {
+  businessName: "(주)한빛무역",
+  email: "export@hanbit.co.kr",
+  phone: "010-1234-5678",
   companyType: "export",
   exportRevenueUsd: 2_400_000,
   importRevenueUsd: null,
@@ -76,6 +86,46 @@ const initialConsultationInfo: ConsultationInfo = {
   agree: false,
 };
 
+/**
+ * IDs and responses returned by the real backend (API 명세서 기준) as the
+ * wizard progresses. Pages call the `@/lib/api` functions themselves and
+ * write results back here via `setServer` — this slice just holds state,
+ * it doesn't orchestrate the calls.
+ */
+export interface ServerState {
+  profileId: number | null;
+  contractId: number | null;
+  /** Maps a local payment-schedule id (PaymentSchedule.id) to the server's settlement_id. */
+  settlementIdByScheduleId: Record<string, number>;
+  /** Maps a local payment-schedule id to its latest risk assessment response. */
+  assessmentByScheduleId: Record<string, RiskAssessmentResponse>;
+  riskProfileId: number | null;
+  riskProfileResult: RiskProfileResponse | null;
+  matchId: number | null;
+  matchItems: ProductMatchItem[];
+  recommendationId: number | null;
+  recommendationMix: StrategyMixItem[];
+  recommendationReason: string | null;
+  consultationRequestId: number | null;
+  consultationStatus: ApiConsultationStatus | null;
+}
+
+const initialServerState: ServerState = {
+  profileId: null,
+  contractId: null,
+  settlementIdByScheduleId: {},
+  assessmentByScheduleId: {},
+  riskProfileId: null,
+  riskProfileResult: null,
+  matchId: null,
+  matchItems: [],
+  recommendationId: null,
+  recommendationMix: [],
+  recommendationReason: null,
+  consultationRequestId: null,
+  consultationStatus: null,
+};
+
 interface WizardContextValue {
   company: CompanyInfo;
   setCompany: (patch: Partial<CompanyInfo>) => void;
@@ -88,8 +138,8 @@ interface WizardContextValue {
   setRiskProfile: (patch: Partial<RiskProfile>) => void;
   consultation: ConsultationInfo;
   setConsultation: (patch: Partial<ConsultationInfo>) => void;
-  consultationSubmitted: { id: string } | null;
-  submitConsultation: () => { id: string };
+  server: ServerState;
+  setServer: (patch: Partial<ServerState>) => void;
   reset: () => void;
 }
 
@@ -100,7 +150,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   const [contract, setContractState] = useState<ContractInfo>(defaultContract);
   const [riskProfile, setRiskProfileState] = useState<RiskProfile>(initialRiskProfile);
   const [consultation, setConsultationState] = useState<ConsultationInfo>(initialConsultationInfo);
-  const [consultationSubmitted, setConsultationSubmitted] = useState<{ id: string } | null>(null);
+  const [server, setServerState] = useState<ServerState>(initialServerState);
 
   const value = useMemo<WizardContextValue>(
     () => ({
@@ -127,25 +177,17 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       setRiskProfile: (patch) => setRiskProfileState((prev) => ({ ...prev, ...patch })),
       consultation,
       setConsultation: (patch) => setConsultationState((prev) => ({ ...prev, ...patch })),
-      consultationSubmitted,
-      submitConsultation: () => {
-        const id = `FXM-${new Date()
-          .toISOString()
-          .slice(0, 10)
-          .replace(/-/g, "")}-${Math.floor(Math.random() * 9000 + 1000)}`;
-        const result = { id };
-        setConsultationSubmitted(result);
-        return result;
-      },
+      server,
+      setServer: (patch) => setServerState((prev) => ({ ...prev, ...patch })),
       reset: () => {
         setCompanyState(initialCompanyInfo);
         setContractState(defaultContract());
         setRiskProfileState(initialRiskProfile);
         setConsultationState(initialConsultationInfo);
-        setConsultationSubmitted(null);
+        setServerState(initialServerState);
       },
     }),
-    [company, contract, riskProfile, consultation, consultationSubmitted],
+    [company, contract, riskProfile, consultation, server],
   );
 
   return <WizardContext.Provider value={value}>{children}</WizardContext.Provider>;

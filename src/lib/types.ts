@@ -3,6 +3,9 @@ export type CompanyType = "export" | "import" | "both";
 export type CreditRating = "A_PLUS" | "BBB" | "BB_MINUS" | "UNKNOWN";
 
 export interface CompanyInfo {
+  businessName: string;
+  email: string;
+  phone: string;
   companyType: CompanyType;
   exportRevenueUsd: number | null;
   importRevenueUsd: number | null;
@@ -42,7 +45,7 @@ export interface RiskProfile {
   hedgeManagementStyle: HedgeManagementStyle | null;
 }
 
-export type ContactMethod = "PHONE" | "EMAIL" | "BRANCH";
+export type ContactMethod = "PHONE" | "EMAIL" | "BRANCH_VISIT";
 
 export interface ConsultationInfo {
   companyName: string;
@@ -57,26 +60,3 @@ export interface ConsultationInfo {
 }
 
 export type RiskGrade = "LOW" | "MEDIUM" | "HIGH";
-
-export interface ScenarioRow {
-  deltaPct: number;
-  impliedRate: number;
-  pnlKrw: number;
-}
-
-export interface AnalysisResult {
-  currentRate: number;
-  netExposureForeign: number;
-  netExposureKrw: number;
-  bep: number;
-  bepIsEstimated: boolean;
-  bepSafetyMarginPct: number;
-  remainingBusinessDays: number;
-  esPct: number;
-  maxLossKrw: number;
-  riskGrade: RiskGrade;
-  breachMoveKrw: number;
-  scenarios: ScenarioRow[];
-  /** Number of payment schedules (결제 정보 카드) this analysis aggregates. */
-  scheduleCount: number;
-}

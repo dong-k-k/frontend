@@ -7,13 +7,21 @@ import { useWizard } from "@/context/wizard-context";
 const CONTACT_METHOD_LABEL: Record<string, string> = {
   PHONE: "전화",
   EMAIL: "이메일",
-  BRANCH: "지점 방문",
+  BRANCH_VISIT: "지점 방문",
+};
+
+const CONSULTATION_STATUS_LABEL: Record<string, string> = {
+  REQUESTED: "접수됨",
+  MATCHING: "담당자 매칭 중",
+  ASSIGNED: "담당자 배정 완료",
+  COMPLETED: "상담 완료",
+  CANCELLED: "취소됨",
 };
 
 export default function ConsultationCompletePage() {
-  const { consultation, consultationSubmitted, reset } = useWizard();
+  const { consultation, server, reset } = useWizard();
 
-  if (!consultationSubmitted) {
+  if (!server.consultationRequestId) {
     return (
       <Shell>
         <ShellHeader step={5} />
@@ -35,10 +43,13 @@ export default function ConsultationCompletePage() {
         <h2 className="mb-6 text-[21px] font-bold text-ink">상담 신청이 완료되었습니다</h2>
         <div className="mx-auto mb-5 grid max-w-[440px] grid-cols-2 gap-2.5 rounded-xl border border-border-soft p-5 text-left text-[12.5px] text-ink-soft">
           <div>
-            상담 신청번호 <b className="text-ink">{consultationSubmitted.id}</b>
+            상담 신청번호 <b className="text-ink">#{server.consultationRequestId}</b>
           </div>
           <div>
-            RM 매칭 상태 <b className="text-ink">진행중</b>
+            RM 매칭 상태{" "}
+            <b className="text-ink">
+              {server.consultationStatus ? CONSULTATION_STATUS_LABEL[server.consultationStatus] : "진행중"}
+            </b>
           </div>
           <div>
             상담 방식 <b className="text-ink">{CONTACT_METHOD_LABEL[consultation.contactMethod]}</b>
@@ -50,10 +61,7 @@ export default function ConsultationCompletePage() {
             희망 지점 <b className="text-ink">{consultation.branch}</b>
           </div>
           <div>
-            전달된 추천상품 <b className="text-ink">3건</b>
-          </div>
-          <div className="col-span-2">
-            PDF 리포트 <b className="text-success-text">첨부됨 ✓</b>
+            전달된 추천상품 <b className="text-ink">{server.matchItems.length}건</b>
           </div>
         </div>
         <p className="mb-6 text-[12.5px] text-ink-soft">

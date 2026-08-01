@@ -1,39 +1,125 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Shell, ShellHeader } from "@/components/ui/Shell";
 import { LinkButton } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { useWizard } from "@/context/wizard-context";
+import { aggregateRiskAssessments } from "@/lib/api/riskAggregate";
 import {
-  allDueDatesAdjustable,
-  computeAnalysis,
-  formatDateDots,
-  formatKrw,
-  formatNumber,
-  nearestDueDate,
-  RISK_GRADE_LABEL,
-} from "@/lib/risk";
-import {
-  deriveProfileLabel,
-  hedgeTargetRangeLabel,
-  PRODUCTS,
-  productThirdCardDetail,
-  scenarioNarrative,
-  STRATEGIES,
-  type ProductCategory,
-} from "@/lib/recommendations";
-
-const FILTERS: ("전체" | ProductCategory)[] = ["전체", "환헤지", "수출금융", "보증·보험"];
+  createProductMatch,
+  createStrategyRecommendation,
+  listProducts,
+  ApiError,
+  strategyTypeLabel,
+  strategyGroupLabel,
+  VERDICT_LABEL,
+  VERDICT_BADGE_VARIANT,
+} from "@/lib/api";
+import type { ProductSummary } from "@/lib/api/types";
+import { allDueDatesAdjustable, formatDateDots, formatKrw, formatNumber, nearestDueDate, RISK_GRADE_LABEL } from "@/lib/risk";
 
 export default function RecommendationsPage() {
-  const { contract, riskProfile, company } = useWizard();
-  const analysis = useMemo(() => computeAnalysis(contract), [contract]);
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]>("전체");
+  const { contract, server, setServer } = useWizard();
+  const [loading, setLoading] = useState(!server.recommendationId);
+  const [error, setError] = useState<string | null>(null);
+  const [products, setProducts] = useState<ProductSummary[]>([]);
+  const [filter, setFilter] = useState<string>("전체");
+  const startedRef = useRef(false);
 
-  const breachVerb = contract.contractType === "export" ? "하락" : "상승";
-  const profileLabel = deriveProfileLabel(riskProfile);
-  const visibleProducts = PRODUCTS.filter((p) => filter === "전체" || p.category === filter);
+  const assessments = useMemo(
+    () =>
+      contract.paymentSchedules
+        .map((s) => server.assessmentByScheduleId[s.id])
+        .filter((a): a is NonNullable<typeof a> => Boolean(a)),
+    [contract.paymentSchedules, server.assessmentByScheduleId],
+  );
+  const agg = useMemo(() => aggregateRiskAssessments(assessments, contract.contractType), [assessments, contract]);
+
+  const primaryScheduleId = contract.paymentSchedules[0]?.id;
+  const primarySettlementId = primaryScheduleId ? server.settlementIdByScheduleId[primaryScheduleId] : undefined;
+  const primaryAssessment = primaryScheduleId ? server.assessmentByScheduleId[primaryScheduleId] : undefined;
+
+  useEffect(() => {
+    listProducts()
+      .then(setProducts)
+      .catch(() => setProducts([]));
+  }, []);
+
+  useEffect(() => {
+    if (startedRef.current || server.recommendationId) return;
+    startedRef.current = true;
+
+    (async () => {
+      if (!primarySettlementId || !primaryAssessment || !server.riskProfileId) {
+        throw new Error("진단 또는 성향 분석이 아직 완료되지 않았습니다. 이전 단계부터 다시 진행해주세요.");
+      }
+      const match = await createProductMatch({
+        settlement_id: primarySettlementId,
+        assessment_id: primaryAssessment.assessment_id,
+        risk_profile_id: server.riskProfileId,
+      });
+      const recommendation = await createStrategyRecommendation({
+        settlement_id: primarySettlementId,
+        match_id: match.match_id,
+        risk_profile_id: server.riskProfileId,
+      });
+      setServer({
+        matchId: match.match_id,
+        matchItems: match.items,
+        recommendationId: recommendation.recommendation_id,
+        recommendationMix: recommendation.recommendation_mix,
+        recommendationReason: recommendation.recommendation_reason,
+      });
+    })()
+      .catch((e) =>
+        setError(e instanceof ApiError || e instanceof Error ? e.message : "추천 정보를 불러오지 못했습니다."),
+      )
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally runs once on mount
+  }, []);
+
+  const productByCode = useMemo(() => new Map(products.map((p) => [p.product_id, p])), [products]);
+
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of server.matchItems) {
+      const p = productByCode.get(item.product_id);
+      if (p) set.add(strategyGroupLabel(p.strategy_group));
+    }
+    return ["전체", ...set];
+  }, [server.matchItems, productByCode]);
+
+  const rankedItems = useMemo(
+    () => [...server.matchItems].sort((a, b) => b.fit_score - a.fit_score),
+    [server.matchItems],
+  );
+  const visibleItems = rankedItems.filter((item) => {
+    if (filter === "전체") return true;
+    const p = productByCode.get(item.product_id);
+    return p ? strategyGroupLabel(p.strategy_group) === filter : false;
+  });
+
+  if (loading) {
+    return (
+      <Shell width="lg">
+        <ShellHeader step={4} />
+        <div className="px-10 py-16 text-center text-sm text-ink-soft">AI가 전략과 상품을 분석하고 있습니다...</div>
+      </Shell>
+    );
+  }
+
+  if (error || !agg) {
+    return (
+      <Shell width="lg">
+        <ShellHeader step={4} />
+        <div className="px-10 py-16 text-center">
+          <p className="mb-6 text-sm text-ink-soft">{error ?? "진단 결과를 먼저 완료해주세요."}</p>
+          <LinkButton href="/diagnosis/result">진단 결과로 이동</LinkButton>
+        </div>
+      </Shell>
+    );
+  }
 
   return (
     <Shell width="lg">
@@ -49,97 +135,113 @@ export default function RecommendationsPage() {
         <h2 className="mb-2.5 text-xl font-bold text-ink">계약에 적합한 대응 전략을 찾았습니다</h2>
 
         <div className="mb-4 flex flex-wrap gap-2">
-          <Badge variant="risk">위험 {RISK_GRADE_LABEL[analysis.riskGrade]}</Badge>
-          <Badge>성향 {profileLabel}</Badge>
-          <Badge>헤지목표 {hedgeTargetRangeLabel(analysis.riskGrade)}</Badge>
-          <Badge>순노출 {formatKrw(analysis.netExposureKrw)}</Badge>
+          <Badge variant="risk">위험 {RISK_GRADE_LABEL[agg.riskGrade]}</Badge>
+          {server.riskProfileResult && <Badge>성향 {server.riskProfileResult.profile_type}</Badge>}
+          {server.riskProfileResult && (
+            <Badge>
+              헤지목표 {server.riskProfileResult.target_hedge_ratio_min}~
+              {server.riskProfileResult.target_hedge_ratio_max}%
+            </Badge>
+          )}
+          <Badge>순노출 {formatKrw(agg.netExposureTotal)}</Badge>
           <Badge>결제일 {formatDateDots(nearestDueDate(contract))}</Badge>
         </div>
 
         <div className="mb-6 rounded-xl border border-border-soft px-5 py-4.5">
           <div className="mb-1.5 text-[12.5px] font-bold text-ink-soft">AI 최종 권장 시나리오</div>
-          <p className="text-[13.5px] leading-relaxed text-ink">{scenarioNarrative(analysis, breachVerb)}</p>
+          <p className="text-[13.5px] leading-relaxed text-ink">
+            {server.recommendationReason ?? "AI 추천 사유 정보가 아직 제공되지 않았습니다."}
+          </p>
           <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted">
-            근거: BEP 안전여유율 {analysis.bepSafetyMarginPct <= 3 ? "낮음" : "충분"} · 결제일까지{" "}
-            {analysis.remainingBusinessDays}영업일 · 예상 손실률 {formatNumber(Math.abs(analysis.esPct), 1)}% ·{" "}
-            {profileLabel} 성향 · 결제일 조정 {allDueDatesAdjustable(contract) ? "가능" : "불가능"}
+            근거: BEP 안전여유율(최소) {formatNumber(agg.bepSafetyMarginPctWorst, 1)}% · 결제일까지{" "}
+            {agg.holdingDaysMin}영업일 · 예상 손실률 {formatNumber(Math.abs(agg.esPctAggregate), 1)}% ·{" "}
+            {server.riskProfileResult?.profile_type ?? "-"} 성향 · 결제일 조정{" "}
+            {allDueDatesAdjustable(contract) ? "가능" : "불가능"}
           </div>
         </div>
 
         <div className="mb-3 text-[15px] font-extrabold text-ink">우리 기업에 적합한 환헤지 전략입니다</div>
-        <div className="mb-6 grid grid-cols-3 gap-3.5">
-          {STRATEGIES.map((s) => (
-            <div
-              key={s.rank}
-              className={
-                "rounded-xl border p-4 " +
-                (s.rank === 1 ? "border-2 border-accent bg-accent-soft" : "border-border-soft")
-              }
-            >
-              <Badge variant={s.rank === 1 ? "accent" : "neutral"}>
-                {s.rank === 1 ? "AI추천 1순위" : `${s.rank}순위`}
-              </Badge>
-              <div className="mt-2 text-sm font-extrabold text-ink">{s.title}</div>
-              <div className="mt-1 text-[11.5px] leading-relaxed text-ink-soft">
-                {s.detailLines.map((line) => (
-                  <div key={line}>{line}</div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+        {server.recommendationMix.length === 0 ? (
+          <p className="mb-6 text-[12.5px] text-muted">추천 가능한 전략이 아직 없습니다.</p>
+        ) : (
+          <div className="mb-6 grid grid-cols-3 gap-3.5">
+            {server.recommendationMix.map((s, i) => {
+              const product = productByCode.get(s.productId);
+              return (
+                <div
+                  key={`${s.strategyType}-${s.productId}-${i}`}
+                  className={
+                    "rounded-xl border p-4 " +
+                    (i === 0 ? "border-2 border-accent bg-accent-soft" : "border-border-soft")
+                  }
+                >
+                  <Badge variant={i === 0 ? "accent" : "neutral"}>{i === 0 ? "AI추천 1순위" : `${i + 1}순위`}</Badge>
+                  <div className="mt-2 text-sm font-extrabold text-ink">{strategyTypeLabel(s.strategyType)}</div>
+                  <div className="mt-1 text-[11.5px] leading-relaxed text-ink-soft">
+                    <div>연계 상품 {product?.name ?? s.productId}</div>
+                    <div>배분 비율 {formatNumber(s.allocationRatio * 100, 0)}%</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <div className="mb-1.5 text-[15px] font-extrabold text-ink">추천 금융상품</div>
         <p className="mb-3 text-xs text-muted">
           최근 실적, 계약 금액, 결제 방식, 신용등급, 결제 예정일을 기준으로 예상 적합도를 분석했습니다.
         </p>
-        <div className="mb-3.5 flex flex-wrap gap-2">
-          {FILTERS.map((f) => (
-            <button
-              key={f}
-              type="button"
-              onClick={() => setFilter(f)}
-              className={
-                "rounded-xl px-2.5 py-1 text-[11px] " +
-                (f === filter ? "bg-chip font-bold text-ink" : "border border-border text-ink-soft")
-              }
-            >
-              {f}
-            </button>
-          ))}
-        </div>
-        <div className="mb-6 grid grid-cols-3 gap-3.5">
-          {visibleProducts.map((p) => {
-            const eligibility = p.eligible(company.creditRating);
-            return (
-              <div
-                key={p.name}
+        {categories.length > 1 && (
+          <div className="mb-3.5 flex flex-wrap gap-2">
+            {categories.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setFilter(c)}
                 className={
-                  "rounded-xl border p-4 " + (p.rank === 1 ? "border-2 border-accent bg-accent-soft" : "border-border-soft")
+                  "rounded-xl px-2.5 py-1 text-[11px] " +
+                  (c === filter ? "bg-chip font-bold text-ink" : "border border-border text-ink-soft")
                 }
               >
-                <div className="flex justify-between">
-                  <span
-                    className={
-                      "rounded-md px-2 py-0.5 text-[10px] font-extrabold " +
-                      (p.rank === 1 ? "bg-accent text-ink" : "bg-chip text-ink-soft")
-                    }
-                  >
-                    적합도 {p.rank}위
-                  </span>
-                  <Badge variant={eligibility.met ? "success" : "warning"} className="!text-[10.5px]">
-                    {eligibility.label}
-                  </Badge>
+                {c}
+              </button>
+            ))}
+          </div>
+        )}
+        {visibleItems.length === 0 ? (
+          <p className="mb-6 text-[12.5px] text-muted">조건에 맞는 추천 금융상품이 아직 없습니다.</p>
+        ) : (
+          <div className="mb-6 grid grid-cols-3 gap-3.5">
+            {visibleItems.map((item, i) => {
+              const p = productByCode.get(item.product_id);
+              return (
+                <div
+                  key={item.id}
+                  className={
+                    "rounded-xl border p-4 " + (i === 0 ? "border-2 border-accent bg-accent-soft" : "border-border-soft")
+                  }
+                >
+                  <div className="flex justify-between">
+                    <span
+                      className={
+                        "rounded-md px-2 py-0.5 text-[10px] font-extrabold " +
+                        (i === 0 ? "bg-accent text-ink" : "bg-chip text-ink-soft")
+                      }
+                    >
+                      적합도 {i + 1}위
+                    </span>
+                    <Badge variant={VERDICT_BADGE_VARIANT[item.verdict]} className="!text-[10.5px]">
+                      {VERDICT_LABEL[item.verdict]}
+                    </Badge>
+                  </div>
+                  <div className="mt-2 text-sm font-extrabold text-ink">{p?.name ?? item.product_id}</div>
+                  <div className="text-[11px] text-muted">{p?.provider ?? ""}</div>
+                  <div className="mt-2 text-[11.5px] text-ink-soft">{item.reason_text}</div>
                 </div>
-                <div className="mt-2 text-sm font-extrabold text-ink">{p.name}</div>
-                <div className="text-[11px] text-muted">{p.issuer}</div>
-                <div className="mt-2 text-[11.5px] text-ink-soft">
-                  {p.detail || productThirdCardDetail(company.creditRating)}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-accent-softer px-6 py-4.5">
           <div>

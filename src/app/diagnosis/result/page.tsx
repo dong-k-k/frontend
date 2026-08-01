@@ -5,16 +5,8 @@ import { Shell, ShellHeader, ShellFooter } from "@/components/ui/Shell";
 import { LinkButton } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { useWizard } from "@/context/wizard-context";
-import {
-  computeAnalysis,
-  formatDateDots,
-  formatKrw,
-  formatNumber,
-  formatSignedKrw,
-  nearestDueDate,
-  primaryCurrency,
-  RISK_GRADE_LABEL,
-} from "@/lib/risk";
+import { aggregateRiskAssessments } from "@/lib/api/riskAggregate";
+import { formatDateDots, formatKrw, formatNumber, formatSignedKrw, nearestDueDate, primaryCurrency, RISK_GRADE_LABEL } from "@/lib/risk";
 
 const RISK_BADGE_VARIANT = {
   LOW: "success",
@@ -31,49 +23,70 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 }
 
 export default function ResultPage() {
-  const { contract } = useWizard();
-  const analysis = useMemo(() => computeAnalysis(contract), [contract]);
-  // "데이터 기준일" — computed once on mount, same safe lazy-init pattern used
-  // for contract dates elsewhere (avoids an SSR/hydration mismatch from a bare `new Date()`).
+  const { contract, server } = useWizard();
   const [asOfDate] = useState(() => new Date());
 
-  const breachVerb = contract.contractType === "export" ? "하락" : "상승";
-  const gradeLabel = RISK_GRADE_LABEL[analysis.riskGrade];
+  const assessments = useMemo(
+    () =>
+      contract.paymentSchedules
+        .map((s) => server.assessmentByScheduleId[s.id])
+        .filter((a): a is NonNullable<typeof a> => Boolean(a)),
+    [contract.paymentSchedules, server.assessmentByScheduleId],
+  );
+  const agg = useMemo(() => aggregateRiskAssessments(assessments, contract.contractType), [assessments, contract]);
 
-  const referenceScenario = analysis.scenarios.find(
-    (row) => row.deltaPct === (contract.contractType === "export" ? -5 : 5),
+  const totalForeignAmount = useMemo(
+    () => contract.paymentSchedules.reduce((sum, s) => sum + (s.amount ?? 0), 0),
+    [contract.paymentSchedules],
+  );
+
+  if (!agg) {
+    return (
+      <Shell width="lg">
+        <ShellHeader step={2} />
+        <div className="px-10 py-16 text-center">
+          <p className="mb-6 text-sm text-ink-soft">아직 진단 결과가 없습니다. 계약 정보 입력부터 다시 진행해주세요.</p>
+          <LinkButton href="/diagnosis/contract">계약정보 입력으로 이동</LinkButton>
+        </div>
+      </Shell>
+    );
+  }
+
+  const breachVerb = contract.contractType === "export" ? "하락" : "상승";
+  const gradeLabel = RISK_GRADE_LABEL[agg.riskGrade];
+  const referenceScenario = agg.scenarios.find(
+    (row) => row.scenario_pct === (contract.contractType === "export" ? -5 : 5),
   );
 
   return (
     <Shell width="lg">
       <ShellHeader step={2} />
       <div className="px-10 py-8">
-        <h2 className={analysis.scheduleCount > 1 ? "mb-1 text-xl font-bold text-ink" : "mb-3.5 text-xl font-bold text-ink"}>
+        <h2 className={agg.itemCount > 1 ? "mb-1 text-xl font-bold text-ink" : "mb-3.5 text-xl font-bold text-ink"}>
           환율 리스크 진단 결과
         </h2>
-        {analysis.scheduleCount > 1 && (
+        {agg.itemCount > 1 && (
           <p className="mb-3.5 text-[12px] text-muted">
-            결제 정보 카드 {analysis.scheduleCount}건(분할 결제)의 금액과 일정을 합산한 결과입니다.
+            결제 정보 카드 {agg.itemCount}건(분할 결제)의 금액과 일정을 합산한 결과입니다.
           </p>
         )}
 
         <div className="mb-6 grid grid-cols-2 gap-6">
           <div className="rounded-xl border border-border-soft p-5">
-            <Badge variant={RISK_BADGE_VARIANT[analysis.riskGrade]}>위험 등급: {gradeLabel}</Badge>
+            <Badge variant={RISK_BADGE_VARIANT[agg.riskGrade]}>위험 등급: {gradeLabel}</Badge>
             <p className="mt-3.5 text-sm leading-relaxed text-ink">
-              최근 3개월 원/{primaryCurrency(contract)} 환율 변동성을 기준으로 분석한 결과, 환율이 5%{" "}
+              최근 환율 변동성을 기준으로 분석한 결과, 환율이 5%{" "}
               {breachVerb === "하락" ? "불리하게(하락)" : "불리하게(상승)"} 움직이면 약{" "}
-              <b>{formatKrw(Math.abs(referenceScenario?.pnlKrw ?? 0))}</b>의 손실이 예상됩니다.
+              <b>{formatKrw(Math.abs(referenceScenario?.pl_krw ?? agg.expectedMaxLossTotal))}</b>의 손실이
+              예상됩니다.
             </p>
             <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2">
-              <MiniStat label="기준 환율" value={`${formatNumber(analysis.currentRate, 1)}원`} />
+              <MiniStat label="기준 환율" value={`${formatNumber(agg.currentRate, 1)}원`} />
               <MiniStat label="데이터 기준일" value={formatDateDots(asOfDate.toISOString().slice(0, 10))} />
               <MiniStat label="분석 통화" value={primaryCurrency(contract)} />
-              <MiniStat
-                label="거래 규모"
-                value={`${primaryCurrency(contract)} ${formatNumber(analysis.netExposureForeign)}`}
-              />
+              <MiniStat label="거래 규모" value={`${primaryCurrency(contract)} ${formatNumber(totalForeignAmount)}`} />
               <MiniStat label="결제 예정일" value={formatDateDots(nearestDueDate(contract))} />
+              <MiniStat label="남은 영업일" value={`${agg.holdingDaysMin}영업일`} />
             </div>
           </div>
 
@@ -114,22 +127,22 @@ export default function ResultPage() {
               </tr>
             </thead>
             <tbody>
-              {analysis.scenarios.map((row) => (
-                <tr key={row.deltaPct} className={row.deltaPct === 0 ? "bg-accent-softer" : undefined}>
-                  <td className={"border-t border-border-soft px-2 py-1.5" + (row.deltaPct === 0 ? " font-bold" : "")}>
-                    {row.deltaPct === 0 ? "변동없음" : `${row.deltaPct > 0 ? "+" : ""}${row.deltaPct}%`}
+              {agg.scenarios.map((row) => (
+                <tr key={row.scenario_pct} className={row.scenario_pct === 0 ? "bg-accent-softer" : undefined}>
+                  <td className={"border-t border-border-soft px-2 py-1.5" + (row.scenario_pct === 0 ? " font-bold" : "")}>
+                    {row.scenario_pct === 0 ? "변동없음" : `${row.scenario_pct > 0 ? "+" : ""}${row.scenario_pct}%`}
                   </td>
-                  <td className="border-t border-border-soft px-2 py-1.5">{formatNumber(row.impliedRate, 1)}원</td>
+                  <td className="border-t border-border-soft px-2 py-1.5">{formatNumber(row.projected_rate, 1)}원</td>
                   <td className="border-t border-border-soft px-2 py-1.5">
-                    {formatKrw(row.impliedRate * analysis.netExposureForeign)}
+                    {formatKrw(agg.netExposureTotal + row.pl_krw)}
                   </td>
                   <td
                     className={
                       "border-t border-border-soft px-2 py-1.5" +
-                      (row.pnlKrw > 0 ? " text-success" : row.pnlKrw < 0 ? " text-danger" : "")
+                      (row.pl_krw > 0 ? " text-success" : row.pl_krw < 0 ? " text-danger" : "")
                     }
                   >
-                    {row.pnlKrw === 0 ? "0원" : `${formatSignedKrw(row.pnlKrw)}원`}
+                    {row.pl_krw === 0 ? "0원" : `${formatSignedKrw(row.pl_krw)}원`}
                   </td>
                 </tr>
               ))}
@@ -140,20 +153,15 @@ export default function ResultPage() {
         <details className="rounded-[10px] border border-border-soft px-4 py-3.5 text-[12.5px] text-ink-soft">
           <summary className="cursor-pointer list-none">
             ▸ 분석 근거 자세히 보기{" "}
-            <span className="text-muted">(변동성 산출 방식, 사용 데이터 출처 등)</span>
+            <span className="text-muted">(BEP 여유율, 손실 산정 방식 등)</span>
           </summary>
           <div className="mt-3 space-y-1.5 text-[12px] leading-relaxed text-muted">
-            <p>· 순노출액은 계약상 결제 예정 금액을 그대로 사용하며, 별도 상계 포지션은 반영하지 않습니다.</p>
+            <p>· 순노출액은 정산 항목별 진단 결과의 원화 환산 노출액을 합산한 값입니다.</p>
+            <p>· 위험 등급은 각 정산 항목의 진단 결과 중 가장 위험도가 높은 등급을 표시합니다.</p>
             <p>
-              · 97.5% Expected Shortfall은 연 8% 수준의 가정 변동성을 남은 영업일 수만큼 시간축으로 환산한 뒤,
-              정규분포 97.5% 구간의 평균 손실로 추정한 참고용 수치입니다.
-            </p>
-            <p>· 위험 등급은 BEP 안전여유율 대비 예상 손실률의 비율로 낮음·중간·높음 3단계로 산정합니다.</p>
-            <p>
-              · 이번 진단 기준 손익분기 환율(BEP) {formatNumber(analysis.bep, 2)}원 · BEP 안전여유율{" "}
-              {formatNumber(analysis.bepSafetyMarginPct, 1)}% · 97.5% ES 변동률 {formatNumber(analysis.esPct, 1)}% ·
-              예상 최대 손실액 {formatSignedKrw(analysis.maxLossKrw)}원 · 남은 영업일 {analysis.remainingBusinessDays}
-              영업일
+              · 이번 진단 기준 BEP 안전여유율(최소) {formatNumber(agg.bepSafetyMarginPctWorst, 1)}% · 97.5% ES 변동률{" "}
+              {formatNumber(agg.esPctAggregate, 1)}% · 예상 최대 손실액 {formatSignedKrw(-agg.expectedMaxLossTotal)}원 ·
+              남은 영업일 {agg.holdingDaysMin}영업일
             </p>
           </div>
         </details>

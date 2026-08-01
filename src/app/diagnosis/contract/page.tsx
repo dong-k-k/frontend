@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Shell, ShellHeader, ShellFooter } from "@/components/ui/Shell";
 import { LinkButton, Button } from "@/components/ui/Button";
@@ -9,6 +9,8 @@ import { OptionCards, PillOptions } from "@/components/ui/OptionCards";
 import { NumberInput, DateInput, Select } from "@/components/ui/Input";
 import { useWizard } from "@/context/wizard-context";
 import { COUNTRIES } from "@/lib/countries";
+import { createContract, createProfile, updateContract, updateProfile, ApiError } from "@/lib/api";
+import { toContractRequest, toProfileRequest } from "@/lib/api/mappers";
 import type {
   ContractType,
   PaymentSchedule,
@@ -120,12 +122,17 @@ function PaymentScheduleCard({
 export default function ContractInfoPage() {
   const router = useRouter();
   const {
+    company,
     contract,
     setContract,
     addPaymentSchedule,
     removePaymentSchedule,
     updatePaymentSchedule,
+    server,
+    setServer,
   } = useWizard();
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const canProceed = useMemo(
     () =>
@@ -138,6 +145,35 @@ export default function ContractInfoPage() {
       ),
     [contract],
   );
+
+  const handleAnalyze = async () => {
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const profileReq = toProfileRequest(company, [contract.countryCode]);
+      const profile = server.profileId
+        ? await updateProfile(server.profileId, profileReq)
+        : await createProfile(profileReq);
+
+      const contractReq = toContractRequest(profile.profile_id, contract);
+      const contractRes = server.contractId
+        ? await updateContract(server.contractId, contractReq)
+        : await createContract(contractReq);
+
+      const settlementIdByScheduleId: Record<string, number> = {};
+      contract.paymentSchedules.forEach((schedule, i) => {
+        const item = contractRes.settlement_items?.[i];
+        if (item) settlementIdByScheduleId[schedule.id] = item.settlement_id;
+      });
+
+      setServer({ profileId: profile.profile_id, contractId: contractRes.contract_id, settlementIdByScheduleId });
+      router.push("/diagnosis/analyzing");
+    } catch (e) {
+      setSubmitError(e instanceof ApiError ? e.message : "계약 정보 저장 중 오류가 발생했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <Shell>
@@ -218,6 +254,7 @@ export default function ContractInfoPage() {
         >
           + 결제 일정 추가
         </button>
+        {submitError && <p className="mt-3 text-xs text-danger">{submitError}</p>}
       </div>
       <ShellFooter
         left={
@@ -230,11 +267,8 @@ export default function ContractInfoPage() {
             <Button variant="secondary" size="sm" type="button">
               임시저장
             </Button>
-            <Button
-              disabled={!canProceed}
-              onClick={() => router.push("/diagnosis/analyzing")}
-            >
-              분석 시작
+            <Button disabled={!canProceed || submitting} onClick={handleAnalyze}>
+              {submitting ? "저장 중..." : "분석 시작"}
             </Button>
           </>
         }

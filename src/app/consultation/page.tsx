@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Shell, ShellHeader, ShellFooter } from "@/components/ui/Shell";
 import { LinkButton, Button } from "@/components/ui/Button";
@@ -8,20 +8,14 @@ import { FieldLabel } from "@/components/ui/Field";
 import { PillOptions } from "@/components/ui/OptionCards";
 import { TextInput, Select } from "@/components/ui/Input";
 import { useWizard } from "@/context/wizard-context";
-import {
-  computeAnalysis,
-  formatDateDots,
-  formatNumber,
-  nearestDueDate,
-  primaryCurrency,
-  RISK_GRADE_LABEL,
-} from "@/lib/risk";
+import { createConsultationRequest, ApiError } from "@/lib/api";
+import { formatDateDots, formatNumber, nearestDueDate, primaryCurrency, RISK_GRADE_LABEL } from "@/lib/risk";
 import type { ContactMethod, SettlementMethod } from "@/lib/types";
 
 const CONTACT_METHODS: { value: ContactMethod; label: string }[] = [
   { value: "PHONE", label: "전화" },
   { value: "EMAIL", label: "이메일" },
-  { value: "BRANCH", label: "지점 방문" },
+  { value: "BRANCH_VISIT", label: "지점 방문" },
 ];
 
 const SETTLEMENT_LABEL: Record<SettlementMethod, string> = {
@@ -46,11 +40,25 @@ function SummaryRow({ label, value, tone }: { label: string; value: string; tone
 
 export default function ConsultationPage() {
   const router = useRouter();
-  const { company, contract, consultation, setConsultation, submitConsultation } = useWizard();
-  const analysis = useMemo(() => computeAnalysis(contract), [contract]);
+  const { company, contract, consultation, setConsultation, server, setServer } = useWizard();
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Pre-fill from what was already collected on the company-info screen, once.
+  useEffect(() => {
+    if (!consultation.companyName && company.businessName) {
+      setConsultation({ companyName: company.businessName, phone: company.phone, email: company.email });
+    }
+  }, [company.businessName, company.phone, company.email, consultation.companyName, setConsultation]);
 
   const recentPerformanceUsd =
     contract.contractType === "export" ? company.exportRevenueUsd : company.importRevenueUsd;
+
+  const primaryAssessment = server.assessmentByScheduleId[contract.paymentSchedules[0]?.id ?? ""];
+  const totalNetExposure = Object.values(server.assessmentByScheduleId).reduce(
+    (sum, a) => sum + a.net_exposure,
+    0,
+  );
 
   const canSubmit = useMemo(
     () =>
@@ -59,14 +67,45 @@ export default function ConsultationPage() {
           consultation.contactName.trim() &&
           consultation.phone.trim() &&
           consultation.email.trim() &&
-          consultation.agree,
+          consultation.agree &&
+          server.profileId &&
+          server.recommendationId,
       ),
-    [consultation],
+    [consultation, server.profileId, server.recommendationId],
   );
 
-  const handleSubmit = () => {
-    submitConsultation();
-    router.push("/consultation/complete");
+  const handleSubmit = async () => {
+    if (!server.profileId || !server.recommendationId) {
+      setSubmitError("진단·추천 단계가 아직 완료되지 않았습니다. 이전 단계부터 다시 진행해주세요.");
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const selectedProductIds = server.matchItems
+        .filter((item) => item.verdict !== "NOT_ELIGIBLE")
+        .map((item) => item.product_id);
+      const response = await createConsultationRequest({
+        profile_id: server.profileId,
+        recommendation_id: server.recommendationId,
+        selected_product_ids: selectedProductIds,
+        contact_name: consultation.contactName,
+        contact_phone: consultation.phone,
+        contact_email: consultation.email,
+        consultation_method: consultation.contactMethod,
+        preferred_time: consultation.preferredTime || null,
+        preferred_branch: consultation.branch || null,
+        memo: consultation.memo || null,
+        privacy_consent: consultation.agree,
+        policy_version: "v1.0",
+      });
+      setServer({ consultationRequestId: response.request_id, consultationStatus: response.status });
+      router.push("/consultation/complete");
+    } catch (e) {
+      setSubmitError(e instanceof ApiError ? e.message : "상담 신청 중 오류가 발생했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -146,6 +185,7 @@ export default function ConsultationPage() {
             />
             개인정보 수집 및 이용에 동의합니다
           </label>
+          {submitError && <p className="mt-3 text-xs text-danger">{submitError}</p>}
         </div>
         <div className="w-[280px] flex-none rounded-xl border border-border-soft p-4.5">
           <div className="mb-2.5 text-[12.5px] font-bold text-ink-soft">전달 정보 요약</div>
@@ -156,19 +196,25 @@ export default function ConsultationPage() {
           <SummaryRow label="계약 유형" value={contract.contractType === "export" ? "수출계약" : "수입계약"} />
           <SummaryRow
             label="계약 통화·금액"
-            value={`${primaryCurrency(contract)} ${formatNumber(analysis.netExposureForeign)}`}
+            value={`${primaryCurrency(contract)} ${formatNumber(contract.paymentSchedules.reduce((s, p) => s + (p.amount ?? 0), 0))}`}
           />
           <SummaryRow label="결제일" value={formatDateDots(nearestDueDate(contract))} />
           {contract.paymentSchedules.length > 1 && (
             <SummaryRow label="결제 일정" value={`분할 ${contract.paymentSchedules.length}건`} />
           )}
           <SummaryRow label="결제 방식" value={SETTLEMENT_LABEL[contract.settlementMethod]} />
-          <SummaryRow label="위험 등급" value={RISK_GRADE_LABEL[analysis.riskGrade]} tone="danger" />
-          <SummaryRow label="Expected Shortfall" value={`${formatNumber(Math.abs(analysis.esPct), 1)}%`} />
-          <SummaryRow label="BEP" value={`${formatNumber(analysis.bep, 2)}원`} />
-          <SummaryRow label="추천 전략" value="3건" />
-          <SummaryRow label="추천 금융상품" value="3건" />
-          <SummaryRow label="PDF 리포트" value="첨부됨 ✓" tone="success" />
+          <SummaryRow
+            label="위험 등급"
+            value={primaryAssessment ? RISK_GRADE_LABEL[primaryAssessment.risk_grade] : "미진단"}
+            tone="danger"
+          />
+          <SummaryRow
+            label="Expected Shortfall"
+            value={primaryAssessment ? `${formatNumber(Math.abs(primaryAssessment.es_pct), 1)}%` : "-"}
+          />
+          <SummaryRow label="순노출액 합계" value={totalNetExposure ? `${formatNumber(totalNetExposure)}원` : "-"} />
+          <SummaryRow label="추천 전략" value={server.recommendationId ? "1건" : "-"} />
+          <SummaryRow label="추천 금융상품" value={`${server.matchItems.length}건`} />
         </div>
       </div>
       <ShellFooter
@@ -178,8 +224,8 @@ export default function ConsultationPage() {
           </LinkButton>
         }
         right={
-          <Button disabled={!canSubmit} onClick={handleSubmit}>
-            상담 신청
+          <Button disabled={!canSubmit || submitting} onClick={handleSubmit}>
+            {submitting ? "신청 중..." : "상담 신청"}
           </Button>
         }
       />

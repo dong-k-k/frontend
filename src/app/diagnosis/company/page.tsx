@@ -6,7 +6,7 @@ import { Shell, ShellHeader, ShellFooter } from "@/components/ui/Shell";
 import { LinkButton, Button } from "@/components/ui/Button";
 import { FieldLabel, RequiredTag, SectionLabel } from "@/components/ui/Field";
 import { OptionCards, PillOptions } from "@/components/ui/OptionCards";
-import { NumberInput } from "@/components/ui/Input";
+import { NumberInput, TextInput } from "@/components/ui/Input";
 import { useWizard } from "@/context/wizard-context";
 import type { CompanyType, CreditRating } from "@/lib/types";
 
@@ -31,6 +31,7 @@ export default function CompanyInfoPage() {
   const needsImport = company.companyType === "import" || company.companyType === "both";
 
   const canProceed = useMemo(() => {
+    if (!company.businessName.trim() || !company.email.trim() || !company.phone.trim()) return false;
     if (needsExport && !company.exportRevenueUsd) return false;
     if (needsImport && !company.importRevenueUsd) return false;
     return Boolean(company.annualRevenueKrw && company.operatingProfitKrw);
@@ -44,6 +45,26 @@ export default function CompanyInfoPage() {
         <p className="mb-6 text-[13px] text-muted">
           입력한 정보는 환율 위험 분석과 금융상품 조건 확인에 활용됩니다.
         </p>
+
+        <div className="mb-5 grid grid-cols-3 gap-x-6 gap-y-4">
+          <div>
+            <FieldLabel required>기업명</FieldLabel>
+            <TextInput value={company.businessName} onChange={(businessName) => setCompany({ businessName })} />
+          </div>
+          <div>
+            <FieldLabel required>이메일</FieldLabel>
+            <TextInput type="email" value={company.email} onChange={(email) => setCompany({ email })} />
+          </div>
+          <div>
+            <FieldLabel required>연락처</FieldLabel>
+            <TextInput
+              type="tel"
+              value={company.phone}
+              onChange={(phone) => setCompany({ phone })}
+              placeholder="010-1234-5678"
+            />
+          </div>
+        </div>
 
         <SectionLabel>
           기업 구분 <RequiredTag />
