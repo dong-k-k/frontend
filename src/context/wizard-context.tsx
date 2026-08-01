@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import type { CompanyInfo, ConsultationInfo, ContractInfo, PaymentSchedule, RiskProfile } from "@/lib/types";
-import { addDays, toISODate } from "@/lib/date";
+import { addDays, toISODate, todayKst } from "@/lib/date";
 import type {
   ProductMatchItem,
   RiskAssessmentResponse,
@@ -54,7 +54,7 @@ function newScheduleId(): string {
  * is actually run.
  */
 function defaultContract(): ContractInfo {
-  const today = new Date();
+  const today = todayKst();
   return {
     ...initialContractInfo,
     paymentSchedules: [

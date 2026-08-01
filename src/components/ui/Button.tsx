@@ -2,7 +2,7 @@ import type { ComponentProps } from "react";
 import Link from "next/link";
 
 const base =
-  "inline-flex items-center justify-center rounded-[10px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center justify-center rounded-[10px] font-bold transition-all duration-150 ease-out active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50";
 
 const variants = {
   primary: "bg-accent text-ink hover:brightness-95",

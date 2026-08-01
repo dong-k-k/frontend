@@ -250,7 +250,7 @@ export default function ContractInfoPage() {
         <button
           type="button"
           onClick={addPaymentSchedule}
-          className="mt-2.5 rounded-lg border border-dashed border-disabled px-4 py-2.5 text-[12.5px] font-semibold text-ink-soft hover:border-ink-soft/40 hover:text-ink"
+          className="mt-2.5 rounded-lg border border-dashed border-disabled px-4 py-2.5 text-[12.5px] font-semibold text-ink-soft transition-all duration-150 ease-out hover:border-ink-soft/40 hover:bg-page hover:text-ink active:scale-[0.97]"
         >
           + 결제 일정 추가
         </button>
