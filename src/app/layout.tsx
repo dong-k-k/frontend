@@ -3,7 +3,7 @@ import "./globals.css";
 import { WizardProvider } from "@/context/wizard-context";
 
 export const metadata: Metadata = {
-  title: "FX Mate — AI 외환 리스크 매니저",
+  title: "청심환 — AI 외환 리스크 매니저",
   description: "체결한 계약의 환율 위험을 진단하고 대응 전략과 금융상품을 추천받으세요.",
 };
 
