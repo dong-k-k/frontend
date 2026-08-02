@@ -1,49 +1,66 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Shell, ShellHeader } from "@/components/ui/Shell";
 import { useWizard } from "@/context/wizard-context";
 import { createRiskAssessment, ApiError } from "@/lib/api";
 
-const CHECKLIST = [
-  "계약 정보 확인",
-  "실시간 매매기준율 조회 중...",
-  "최근 환율 데이터 조회 중...",
-  "남은 영업일 계산",
-  "순노출액 계산",
-  "BEP 안전여유율 계산",
-  "97.5% Expected Shortfall 계산",
-  "위험 등급 산정",
-];
+/** 이 시간 이상 요청이 끝나지 않으면 안내 문구만 바꾼다 — 단계나 퍼센트를 지어내지 않는다. */
+const SLOW_NOTICE_DELAY_MS = 15000;
 
-const STEP_DELAY_MS = 550;
-
+/**
+ * dongkk-server의 진단 생성 API(POST .../risk-assessment)는 완전 동기 호출로,
+ * 단계별 진행 상태나 폴링 가능한 상태 조회 엔드포인트를 제공하지 않는다
+ * (job id, status 필드, SSE/WebSocket 없음). 그래서 여기서는 실제로 알 수 없는
+ * "몇 단계 중 몇 번째"류 체크리스트를 지어내지 않고, 요청이 진행 중인지 여부만
+ * 정직하게 표시한다.
+ */
 export default function AnalyzingPage() {
   const router = useRouter();
   const { contract, server, setServer } = useWizard();
-  const [doneCount, setDoneCount] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [slowNotice, setSlowNotice] = useState(false);
   const startedRef = useRef(false);
+  // 요청 진행 중 재시도 버튼 연타 등으로 겹쳐 호출되는 것을 막는 동기 가드(state는 다음 렌더까지 반영이 늦을 수 있음).
+  const submittingRef = useRef(false);
+  // 언마운트(뒤로가기/다른 페이지 이동) 이후에는 응답이 와도 상태를 갱신하거나 라우팅하지 않는다.
+  const mountedRef = useRef(true);
 
-  // Drives the visual checklist independently of the real network calls below.
   useEffect(() => {
-    if (error || doneCount >= CHECKLIST.length) return;
-    const timeout = setTimeout(() => setDoneCount((n) => n + 1), STEP_DELAY_MS);
-    return () => clearTimeout(timeout);
-  }, [doneCount, error]);
+    // StrictMode 개발 모드에서는 mount→cleanup→mount가 한 번 더 일어나므로,
+    // cleanup에서 false로 내린 값을 다음 마운트 시점에 다시 true로 되돌려야 한다.
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
-  // Kicks off the real risk-assessment calls once, in parallel with the animation above.
-  // Navigation to the result page waits for both to finish.
-  useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
+  const runAssessment = useCallback(() => {
+    if (submittingRef.current) return;
+
+    // 새로고침 없이 뒤로가기 등으로 이 페이지에 다시 들어온 경우, 이미 모든 결제 정보 카드의
+    // 진단이 끝나 있다면 API를 다시 호출하지 않고 바로 결과 화면으로 보낸다.
+    const alreadyAssessed =
+      contract.paymentSchedules.length > 0 &&
+      contract.paymentSchedules.every((s) => server.assessmentByScheduleId[s.id]);
+    if (alreadyAssessed) {
+      router.push("/diagnosis/result");
+      return;
+    }
 
     const settlementEntries = contract.paymentSchedules
       .map((schedule) => [schedule.id, server.settlementIdByScheduleId[schedule.id]] as const)
       .filter((entry): entry is [string, number] => entry[1] !== undefined);
 
-    const minDelay = new Promise((resolve) => setTimeout(resolve, STEP_DELAY_MS * CHECKLIST.length));
+    submittingRef.current = true;
+    setSubmitting(true);
+    setError(null);
+    setSlowNotice(false);
+    const slowTimer = setTimeout(() => {
+      if (mountedRef.current) setSlowNotice(true);
+    }, SLOW_NOTICE_DELAY_MS);
 
     (async () => {
       if (settlementEntries.length === 0) {
@@ -54,19 +71,39 @@ export default function AnalyzingPage() {
           createRiskAssessment(settlementId).then((assessment) => [scheduleId, assessment] as const),
         ),
       );
-      await minDelay;
+      if (!mountedRef.current) return;
       const assessmentByScheduleId = { ...server.assessmentByScheduleId };
       for (const [scheduleId, assessment] of pairs) {
         assessmentByScheduleId[scheduleId] = assessment;
       }
       setServer({ assessmentByScheduleId });
-      setDoneCount(CHECKLIST.length);
       router.push("/diagnosis/result");
-    })().catch((e) => {
-      setError(e instanceof ApiError || e instanceof Error ? e.message : "환율 리스크 진단 중 오류가 발생했습니다.");
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally runs once on mount
+    })()
+      .catch((e) => {
+        if (!mountedRef.current) return;
+        setError(e instanceof ApiError || e instanceof Error ? e.message : "환율 리스크 진단 중 오류가 발생했습니다.");
+      })
+      .finally(() => {
+        clearTimeout(slowTimer);
+        submittingRef.current = false;
+        if (mountedRef.current) {
+          setSubmitting(false);
+          setSlowNotice(false);
+        }
+      });
+  }, [contract.paymentSchedules, router, server.assessmentByScheduleId, server.settlementIdByScheduleId, setServer]);
+
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    runAssessment();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 마운트 시 1회만 실행
   }, []);
+
+  const handleRetry = () => {
+    if (submittingRef.current) return;
+    runAssessment();
+  };
 
   return (
     <Shell>
@@ -79,13 +116,24 @@ export default function AnalyzingPage() {
             </div>
             <h2 className="mb-1.5 text-lg font-bold text-ink">진단 요청이 실패했습니다</h2>
             <p className="mb-6 max-w-[380px] mx-auto text-[12.5px] text-muted">{error}</p>
-            <button
-              type="button"
-              onClick={() => router.push("/diagnosis/contract")}
-              className="rounded-[10px] bg-accent px-6 py-3 text-sm font-bold text-ink"
-            >
-              계약정보로 돌아가기
-            </button>
+            <div className="flex items-center justify-center gap-2.5">
+              <button
+                type="button"
+                onClick={handleRetry}
+                disabled={submitting}
+                className="rounded-[10px] bg-accent px-6 py-3 text-sm font-bold text-ink disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {submitting ? "다시 시도하는 중..." : "다시 시도"}
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/diagnosis/contract")}
+                disabled={submitting}
+                className="rounded-[10px] border border-disabled px-6 py-3 text-sm font-semibold text-ink-soft disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                계약정보로 돌아가기
+              </button>
+            </div>
           </>
         ) : (
           <>
@@ -94,31 +142,11 @@ export default function AnalyzingPage() {
             <p className="mb-6 text-[12.5px] text-muted">
               실시간 환율과 최근 데이터를 바탕으로 결제일까지의 위험을 계산합니다
             </p>
-            <div className="mx-auto flex max-w-[360px] flex-col items-stretch gap-2.5 text-left">
-              {CHECKLIST.map((label, i) => {
-                const done = i < doneCount;
-                const active = i === doneCount;
-                return (
-                  <div
-                    key={label}
-                    className={
-                      "flex items-center gap-2.5 text-[13px] " +
-                      (done ? "text-ink-soft" : active ? "font-bold text-ink" : "text-faint")
-                    }
-                  >
-                    {done ? (
-                      <span className="font-extrabold text-success">✓</span>
-                    ) : active ? (
-                      <span className="inline-block h-3.5 w-3.5 animate-spin-slow rounded-full border-2 border-accent border-t-transparent" />
-                    ) : (
-                      <span>○</span>
-                    )}
-                    {label}
-                  </div>
-                );
-              })}
-            </div>
-            <p className="mt-5 text-[11.5px] text-muted">분석에는 약 10~20초가 소요될 수 있습니다.</p>
+            <p className="mt-5 text-[11.5px] text-muted">
+              {slowNotice
+                ? "예상보다 시간이 조금 더 걸리고 있습니다. 잠시만 기다려주세요."
+                : "분석에는 약 10~20초가 소요될 수 있습니다."}
+            </p>
           </>
         )}
       </div>
