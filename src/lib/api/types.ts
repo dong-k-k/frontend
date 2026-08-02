@@ -180,14 +180,17 @@ export interface ProductMatchRequest {
   risk_profile_id: number;
 }
 
-export type ApiMatchVerdict = "ELIGIBLE" | "CONDITIONAL" | "NOT_ELIGIBLE";
+export type ApiEligibilityStatus = "RECOMMENDED" | "CONDITIONAL" | "RM_REVIEW_REQUIRED" | "NOT_RECOMMENDED";
 
 export interface ProductMatchItem {
   id: number;
   product_id: string;
-  verdict: ApiMatchVerdict;
+  product_name: string;
+  provider: string;
   fit_score: number;
-  reason_text: string;
+  eligibility_status: ApiEligibilityStatus;
+  reason_text: string | null;
+  recommended_hedge_amount_krw: number | null;
 }
 
 export interface ProductMatchResponse {
@@ -248,9 +251,24 @@ export interface StrategyRecommendationRequest {
  * 실제 응답과 다릅니다 — 실제로는 상품 배분 비율(allocationRatio)과 productId를 줍니다.
  */
 export interface StrategyMixItem {
-  strategyType: string;
   productId: string;
+  productName: string;
+  provider: string;
+  eligibilityStatus: ApiEligibilityStatus;
   allocationRatio: number;
+}
+
+export interface AvoidedLossScenario {
+  scenarioName: string;
+  avoidedLossKrw: number;
+}
+
+export interface AvoidedLossCard {
+  productId: string;
+  productName: string;
+  provider: string;
+  recommendedHedgeAmountKrw: number | null;
+  avoidedLossScenarios: AvoidedLossScenario[] | null;
 }
 
 export interface StrategyRecommendationResponse {
@@ -260,6 +278,7 @@ export interface StrategyRecommendationResponse {
   risk_profile_id: number;
   recommendation_mix: StrategyMixItem[];
   recommendation_reason: string | null;
+  avoided_loss_by_product: AvoidedLossCard[] | null;
   pdf_url: string | null;
 }
 

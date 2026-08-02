@@ -83,7 +83,7 @@ export default function ConsultationPage() {
     setSubmitError(null);
     try {
       const selectedProductIds = server.matchItems
-        .filter((item) => item.verdict !== "NOT_ELIGIBLE")
+        .filter((item) => item.eligibility_status !== "NOT_RECOMMENDED")
         .map((item) => item.product_id);
       const response = await createConsultationRequest({
         profile_id: server.profileId,
