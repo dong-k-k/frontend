@@ -17,9 +17,21 @@ import type { ForecastChartPoint, ForecastView } from "@/lib/api/rateForecastVie
 import { formatOrDash, formatNumber } from "@/lib/risk";
 
 type ViewMode = "chart" | "table";
-/** "불러올 수 없습니다"(네트워크/서버 오류)와 "아직 생성되지 않았습니다"(엔드포인트
- * 부재·빈 응답)는 서로 다른 상황이라 문구를 구분한다 — 과거 환율로 대체하지 않는다. */
-type ForecastStatus = "loading" | "unavailable" | "not_generated" | "ready";
+/**
+ * 서버가 실제로 구분해 내려주는 상황별로 문구를 다르게 보여준다 — 과거 환율로
+ * 대체하지 않는다(app/risk/router.py 기준):
+ * - not_generated: 404 — 이 정산건은 예측 대상이 아님(통화가 USD가 아니거나 정산건 없음)
+ * - upstream_unavailable: 502 — dongkk-server는 정상이지만 fx-chronos가 응답하지 않음
+ * - temporarily_unavailable: 503/504 — 인프라 단의 일시적 장애/타임아웃
+ * - unavailable: 그 외(네트워크 실패, 500 등)
+ */
+type ForecastStatus =
+  | "loading"
+  | "not_generated"
+  | "upstream_unavailable"
+  | "temporarily_unavailable"
+  | "unavailable"
+  | "ready";
 
 const VIEW_MODE_OPTIONS: { value: ViewMode; label: string }[] = [
   { value: "chart", label: "그래프로 보기" },
@@ -47,9 +59,13 @@ function ChartTooltip({ active, payload }: { active?: boolean; payload?: { paylo
 export function ExchangeRateForecastCard({
   view,
   status,
+  errorDetail,
 }: {
   view: ForecastView | null;
   status: ForecastStatus;
+  /** 서버가 실제로 응답한 오류 사유(예: "현재 환율 예측은 USD만 지원합니다: EUR",
+   * "환율 예측 서비스(fx-chronos)에서 응답을 받지 못했습니다") — 있으면 그대로 덧붙인다. */
+  errorDetail?: string | null;
 }) {
   const [mode, setMode] = useState<ViewMode>("chart");
   const hasData = Boolean(view && view.points.length > 0);
@@ -98,12 +114,28 @@ export function ExchangeRateForecastCard({
         <div className="py-10 text-center text-[12px] text-muted">미래 환율 예측을 불러오는 중입니다...</div>
       )}
 
-      {status === "unavailable" && (
-        <div className="py-10 text-center text-[12px] text-danger">미래 환율 예측 데이터를 불러올 수 없습니다.</div>
+      {status === "not_generated" && (
+        <div className="py-10 text-center text-[12px] text-muted">
+          이 결제 건은 미래 환율 예측 대상이 아닙니다.
+          {errorDetail && <div className="mt-1 text-muted">({errorDetail})</div>}
+        </div>
       )}
 
-      {status === "not_generated" && (
-        <div className="py-10 text-center text-[12px] text-muted">미래 환율 예측 데이터가 아직 생성되지 않았습니다.</div>
+      {status === "upstream_unavailable" && (
+        <div className="py-10 text-center text-[12px] text-danger">
+          환율 예측 서비스가 일시적으로 응답하지 않습니다.
+          {errorDetail && <div className="mt-1 text-muted">({errorDetail})</div>}
+        </div>
+      )}
+
+      {status === "temporarily_unavailable" && (
+        <div className="py-10 text-center text-[12px] text-danger">
+          환율 예측 서비스에 일시적으로 연결할 수 없습니다. 잠시 후 다시 시도해주세요.
+        </div>
+      )}
+
+      {status === "unavailable" && (
+        <div className="py-10 text-center text-[12px] text-danger">미래 환율 예측 데이터를 불러올 수 없습니다.</div>
       )}
 
       {status === "ready" && view && !hasData && (
@@ -208,6 +240,10 @@ export function ExchangeRateForecastCard({
             </tbody>
           </table>
         </div>
+      )}
+
+      {status === "ready" && view && hasData && view.warnings.length > 0 && (
+        <div className="mt-2 text-[10.5px] leading-relaxed text-muted">{view.warnings.join(" ")}</div>
       )}
     </div>
   );

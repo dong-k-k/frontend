@@ -82,41 +82,38 @@ describe("normalizeRateHistory", () => {
   });
 });
 
-// [구현 예정] 실제 엔드포인트가 아직 없지만, 생기면 다른 Decimal 필드처럼
-// 문자열로 올 가능성이 높으므로 같은 방식으로 미리 대비해둔다.
+// 실제 `GET .../rate-forecast` 응답 기준(app/risk/schemas.py::RateForecastResponse) —
+// point/lower/median/upper는 Decimal이라 다른 Decimal 필드처럼 문자열로 내려온다.
 const rawRateForecast = {
   settlement_id: 17,
-  currency: "USD",
+  currency_pair: "USD/KRW",
   forecast_origin: "2026-08-03",
-  reference_rate: "1441.10",
-  bep_rate: "1320.00",
+  horizon: 90,
+  unit: "KRW per USD",
   model_name: "shrunk_ensemble",
-  series: [{ date: "2026-08-04", point_rate: "1443.20", lower_rate: "1420.00", median_rate: "1442.00", upper_rate: "1466.00" }],
+  generated_at: "2026-08-03T03:00:00+09:00",
+  forecast: [{ date: "2026-08-04", point: "1443.20", lower: "1420.00", median: "1442.00", upper: "1466.00" }],
+  warnings: ["Chronos 분위수는 검증된 신뢰구간이 아닙니다."],
 } as unknown as RateForecastResponse;
 
 describe("normalizeRateForecast", () => {
-  it("coerces reference_rate, bep_rate, and every series point's Decimal-string fields", () => {
+  it("coerces every forecast point's Decimal-string fields", () => {
     const normalized = normalizeRateForecast(rawRateForecast);
-    expect(normalized.reference_rate).toBe(1441.1);
-    expect(normalized.bep_rate).toBe(1320);
-    expect(normalized.series[0].point_rate).toBe(1443.2);
-    expect(normalized.series[0].lower_rate).toBe(1420);
-    expect(normalized.series[0].median_rate).toBe(1442);
-    expect(normalized.series[0].upper_rate).toBe(1466);
+    expect(normalized.forecast[0].point).toBe(1443.2);
+    expect(normalized.forecast[0].lower).toBe(1420);
+    expect(normalized.forecast[0].median).toBe(1442);
+    expect(normalized.forecast[0].upper).toBe(1466);
   });
 
-  it("keeps lower/median/upper null when the AI service didn't provide quantiles", () => {
-    const normalized = normalizeRateForecast({
-      ...rawRateForecast,
-      series: [{ date: "2026-08-04", point_rate: "1443.20", lower_rate: null, median_rate: null, upper_rate: null }],
-    } as unknown as RateForecastResponse);
-    expect(normalized.series[0].lower_rate).toBeNull();
-    expect(normalized.series[0].median_rate).toBeNull();
-    expect(normalized.series[0].upper_rate).toBeNull();
+  it("leaves non-Decimal fields (currency_pair/model_name/warnings) untouched", () => {
+    const normalized = normalizeRateForecast(rawRateForecast);
+    expect(normalized.currency_pair).toBe("USD/KRW");
+    expect(normalized.model_name).toBe("shrunk_ensemble");
+    expect(normalized.warnings).toEqual(["Chronos 분위수는 검증된 신뢰구간이 아닙니다."]);
   });
 
-  it("does not fabricate points for an empty series", () => {
-    const normalized = normalizeRateForecast({ ...rawRateForecast, series: [] } as unknown as RateForecastResponse);
-    expect(normalized.series).toEqual([]);
+  it("does not fabricate points for an empty forecast array", () => {
+    const normalized = normalizeRateForecast({ ...rawRateForecast, forecast: [] } as unknown as RateForecastResponse);
+    expect(normalized.forecast).toEqual([]);
   });
 });

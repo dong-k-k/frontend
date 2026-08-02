@@ -115,42 +115,43 @@ export interface RateHistoryResponse {
 }
 
 /**
- * [구현 예정] 미래 환율 예측 — dongkk-server에 아직 이 API가 없다(app/ 전체에
- * "forecast" 문자열 grep 0건, 2026-08-03 재확인). 아래는 dongkk-ai/fx-chronos의
- * 실제 필드를 기준으로 설계한 목표 DTO다:
- *
- *   fx-chronos ForecastScenario(fx-chronos/src/forecast_provider.py:46-61)의
- *   forecast_dates/point_forecast/lower_scenario/median_scenario/upper_scenario
- *   (모두 날짜 개수만큼의 병렬 배열)를, dongkk-server가 이미 쓰는
- *   RateHistoryResponse.series 패턴과 동일하게 "날짜별 객체 배열"로 바꾼 형태.
- *
- * 실제 엔드포인트가 생기기 전까지 이 타입은 목표 계약일 뿐이며, 지어낸 값을
- * 채우는 데 쓰지 않는다(7절 — 빈 상태로 처리).
+ * `GET /api/v1/settlement-items/{settlement_id}/rate-forecast` (app/risk/schemas.py::ForecastPoint,
+ * 2026-08 실제 구현 기준 — dongkk-ai/fx-chronos `GET /internal/fx-forecast`를 그대로 통과시킨 값).
+ * `point/lower/median/upper`는 서버에서 `Decimal`이라 다른 Decimal 필드처럼 JSON 문자열로
+ * 내려온다(`net_exposure` 등과 동일 패턴, 실제 호출로 확인) — `normalizeRateForecast`에서 숫자로 변환한다.
  */
 export interface ForecastPoint {
   date: string;
   /** fx-chronos point_forecast(앙상블 점 예측) — "중앙 예측 환율"로 표시. */
-  point_rate: number;
-  /** fx-chronos lower_scenario. 분위수 예측이 없는 실행에서는 null. */
-  lower_rate: number | null;
-  /** fx-chronos median_scenario. 현재 화면에서는 그래프·표에 그리지 않고 타입에만 보존. */
-  median_rate: number | null;
-  /** fx-chronos upper_scenario. 분위수 예측이 없는 실행에서는 null. */
-  upper_rate: number | null;
+  point: number;
+  lower: number;
+  /** 현재 화면에서는 그래프·표에 그리지 않고 타입에만 보존. */
+  median: number;
+  upper: number;
 }
 
-/** [구현 예정] `GET /api/v1/settlement-items/{settlement_id}/rate-forecast` (목표 경로 — 아직 서버에 없음). */
+/**
+ * `GET /api/v1/settlement-items/{settlement_id}/rate-forecast` (app/risk/schemas.py::RateForecastResponse).
+ * 이 API는 정산건별 예측이 아니라 "매일 03:00 KST에 재생성되는 USD/KRW 고정 H90(90일) 시계열"을
+ * 그대로 돌려준다 — settlement_id는 요청 확인용일 뿐, 응답 값 자체는 통화쌍과 결제일에 따라
+ * 달라지지 않는다. currency가 USD가 아닌 정산건은 서버가 404로 거부한다(app/risk/router.py).
+ * 기준환율/BEP처럼 이 정산건에 특화된 값은 이 응답에 없다 — 화면이 이미 갖고 있는 실제 값
+ * (진단 결과의 current_rate, 결제 정보의 bep_rate)을 호출부에서 넘겨받아 쓴다.
+ */
 export interface RateForecastResponse {
   settlement_id: number;
-  currency: string;
-  /** fx-chronos forecast_origin — 이 예측이 만들어진 기준일. */
+  currency_pair: string;
+  /** 이 예측의 기준일(마지막 실측일). */
   forecast_origin: string;
-  /** "기준환율" — forecast_origin 시점의 환율. 서버가 못 채우면 null. */
-  reference_rate: number | null;
-  /** "손익분기환율" — settlement_item.bep_rate. */
-  bep_rate: number | null;
-  model_name: string | null;
-  series: ForecastPoint[];
+  /** 예측 일수(현재 항상 90). */
+  horizon: number;
+  unit: string;
+  model_name: string;
+  /** 이 예측 스냅샷이 생성된 시각(ISO datetime 문자열). */
+  generated_at: string;
+  forecast: ForecastPoint[];
+  /** fx-chronos가 명시한 신뢰도 한계 등 실제 경고 문구 — 지어내지 않고 그대로 표시한다. */
+  warnings: string[];
 }
 
 export interface RiskProfileRequest {

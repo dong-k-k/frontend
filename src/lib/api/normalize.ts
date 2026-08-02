@@ -55,20 +55,18 @@ export function normalizeRateHistory(raw: RateHistoryResponse): RateHistoryRespo
 function normalizeForecastPoint(raw: ForecastPoint): ForecastPoint {
   return {
     date: raw.date,
-    point_rate: toNumber(raw.point_rate),
-    lower_rate: toNumberOrNull(raw.lower_rate),
-    median_rate: toNumberOrNull(raw.median_rate),
-    upper_rate: toNumberOrNull(raw.upper_rate),
+    point: toNumber(raw.point),
+    lower: toNumber(raw.lower),
+    median: toNumber(raw.median),
+    upper: toNumber(raw.upper),
   };
 }
 
-/** [구현 예정 API 대비] 실제 엔드포인트가 생기면 이 서버도 다른 Decimal 필드처럼
- * 문자열로 직렬화할 가능성이 높다 — 미리 안전하게 정규화한다. */
+/** 다른 Decimal 필드(net_exposure 등)와 동일하게, 실제 서버가 point/lower/median/upper를
+ * JSON 문자열로 내려보내므로 숫자로 정규화한다. */
 export function normalizeRateForecast(raw: RateForecastResponse): RateForecastResponse {
   return {
     ...raw,
-    reference_rate: toNumberOrNull(raw.reference_rate),
-    bep_rate: toNumberOrNull(raw.bep_rate),
-    series: raw.series.map(normalizeForecastPoint),
+    forecast: raw.forecast.map(normalizeForecastPoint),
   };
 }

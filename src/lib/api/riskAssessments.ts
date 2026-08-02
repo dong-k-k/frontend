@@ -38,10 +38,9 @@ export async function getRateHistory(settlementId: number, days?: number): Promi
   return normalizeRateHistory(raw);
 }
 
-/** [구현 예정] dongkk-server에 아직 없는 목표 엔드포인트(`types.ts`의
- * RateForecastResponse 문서 참고) — 실제로 호출하면 현재는 404가 난다.
- * 호출부(result 페이지)는 이 404를 "아직 생성되지 않음" 빈 상태로 처리하고,
- * 그 외 오류(네트워크 실패 등)는 별도의 오류 상태로 구분한다. */
+/** 미래 환율 예측(D+1~D+90, USD/KRW 고정) — `types.ts`의 RateForecastResponse 참고.
+ * 정산건 통화가 USD가 아니거나 해당 정산건이 없으면 404, fx-chronos가 응답하지
+ * 않으면 502가 난다. 호출부(result 페이지)가 상태 코드별로 안내 문구를 구분한다. */
 export async function getExchangeRateForecast(settlementId: number): Promise<RateForecastResponse> {
   const raw = await apiFetch<RateForecastResponse>("/api/v1/settlement-items/{settlement_id}/rate-forecast", {
     pathParams: { settlement_id: settlementId },

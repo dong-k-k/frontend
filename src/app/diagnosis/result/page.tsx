@@ -21,7 +21,27 @@ import {
 import { ExchangeRateForecastCard } from "./ExchangeRateForecastCard";
 import { ScenarioSection } from "./ScenarioSection";
 
-type ForecastStatus = "loading" | "unavailable" | "not_generated" | "ready";
+type ForecastStatus =
+  | "loading"
+  | "not_generated"
+  | "upstream_unavailable"
+  | "temporarily_unavailable"
+  | "unavailable"
+  | "ready";
+
+/** 서버 오류 응답 body(`{"detail": "..."}`)에서 실제 사유 문구를 꺼낸다 — 못 읽으면
+ * null(카드는 그때 상태별 기본 문구만 보여준다, 지어낸 문구를 채우지 않는다). */
+function parseErrorDetail(message: string): string | null {
+  try {
+    const parsed: unknown = JSON.parse(message);
+    if (parsed && typeof parsed === "object" && "detail" in parsed && typeof parsed.detail === "string") {
+      return parsed.detail;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 const RISK_BADGE_VARIANT = {
   LOW: "success",
@@ -57,28 +77,42 @@ export default function ResultPage() {
 
   // 대표(첫 결제 회차) 정산건 기준 미래 환율 예측 — 그래프와 표 전환이 데이터를
   // 다시 요청하지 않도록, 한 번만 조회해 로컬 state에 보관하고 두 뷰가 공유한다.
-  // [구현 예정] server에 이 API가 아직 없어(1절 참고) 현재는 항상 404 →
-  // "아직 생성되지 않음" 상태로 떨어진다. 과거 환율(rate-history)로 대체하지 않는다.
+  // 응답에 기준환율/BEP가 없으므로(app/risk/schemas.py::RateForecastResponse), 화면이
+  // 이미 아는 실제 값(진단 결과의 current_rate, 결제 정보의 bep)을 그대로 넘긴다 —
+  // 과거 환율(rate-history)이나 지어낸 값으로 대체하지 않는다.
   const primaryScheduleId = contract.paymentSchedules[0]?.id;
   const primarySettlementId = primaryScheduleId ? server.settlementIdByScheduleId[primaryScheduleId] : undefined;
+  const primaryBepRate = contract.paymentSchedules[0]?.bep ?? null;
   const [forecastView, setForecastView] = useState<ForecastView | null>(null);
   const [forecastStatus, setForecastStatus] = useState<ForecastStatus>("loading");
+  const [forecastErrorDetail, setForecastErrorDetail] = useState<string | null>(null);
   const forecastRequestedFor = useRef<number | null>(null);
 
   useEffect(() => {
     if (!primarySettlementId || forecastRequestedFor.current === primarySettlementId) return;
     forecastRequestedFor.current = primarySettlementId;
     setForecastStatus("loading");
+    setForecastErrorDetail(null);
     getExchangeRateForecast(primarySettlementId)
       .then((response) => {
-        setForecastView(buildForecastView(response));
+        setForecastView(buildForecastView(response, { referenceRate: agg?.currentRate ?? null, bepRate: primaryBepRate }));
         setForecastStatus("ready");
       })
       .catch((e) => {
-        // 404 = "이 엔드포인트가 아직 없다/이 정산건의 예측이 아직 없다"는
-        // 예상된 상태이지 오류가 아니다 — 네트워크 실패 등 진짜 오류와 구분한다.
-        setForecastStatus(e instanceof ApiError && e.status === 404 ? "not_generated" : "unavailable");
+        if (!(e instanceof ApiError)) {
+          setForecastStatus("unavailable");
+          return;
+        }
+        setForecastErrorDetail(parseErrorDetail(e.message));
+        // 404 = 이 정산건은 애초에 예측 대상이 아님(통화가 USD가 아니거나 정산건 없음).
+        // 502 = dongkk-server는 정상이지만 fx-chronos가 응답하지 않음.
+        // 503/504 = 인프라 단 일시적 장애/타임아웃. 그 외는 진짜 오류로 구분한다.
+        if (e.status === 404) setForecastStatus("not_generated");
+        else if (e.status === 502) setForecastStatus("upstream_unavailable");
+        else if (e.status === 503 || e.status === 504) setForecastStatus("temporarily_unavailable");
+        else setForecastStatus("unavailable");
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- settlementId당 한 번만 조회
   }, [primarySettlementId]);
 
   if (!agg) {
@@ -136,7 +170,7 @@ export default function ResultPage() {
             </div>
           </div>
 
-          <ExchangeRateForecastCard view={forecastView} status={forecastStatus} />
+          <ExchangeRateForecastCard view={forecastView} status={forecastStatus} errorDetail={forecastErrorDetail} />
         </div>
 
         <div className="mb-5 rounded-xl border border-border-soft p-4">
