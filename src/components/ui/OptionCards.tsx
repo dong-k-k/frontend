@@ -15,6 +15,7 @@ export function OptionCards<T extends string>({
           <button
             key={opt.value}
             type="button"
+            aria-pressed={selected}
             onClick={() => onChange(opt.value)}
             className={
               "flex-1 rounded-[10px] border px-3 py-3 text-center text-[13px] transition-colors " +
@@ -48,6 +49,7 @@ export function PillOptions<T extends string>({
           <button
             key={opt.value}
             type="button"
+            aria-pressed={selected}
             onClick={() => onChange(opt.value)}
             className={
               "rounded-full px-3 py-1.5 text-xs transition-colors " +

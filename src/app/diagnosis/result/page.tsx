@@ -1,12 +1,27 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Shell, ShellHeader, ShellFooter } from "@/components/ui/Shell";
 import { LinkButton } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { useWizard } from "@/context/wizard-context";
 import { aggregateRiskAssessments } from "@/lib/api/riskAggregate";
-import { formatDateDots, formatKrw, formatNumber, formatSignedKrw, nearestDueDate, primaryCurrency, RISK_GRADE_LABEL } from "@/lib/risk";
+import { getExchangeRateForecast, ApiError } from "@/lib/api";
+import { buildForecastView, type ForecastView } from "@/lib/api/rateForecastView";
+import {
+  formatDateDots,
+  formatKrw,
+  formatNumber,
+  formatOrDash,
+  formatSignedKrw,
+  nearestDueDate,
+  primaryCurrency,
+  RISK_GRADE_LABEL,
+} from "@/lib/risk";
+import { ExchangeRateForecastCard } from "./ExchangeRateForecastCard";
+import { ScenarioSection } from "./ScenarioSection";
+
+type ForecastStatus = "loading" | "unavailable" | "not_generated" | "ready";
 
 const RISK_BADGE_VARIANT = {
   LOW: "success",
@@ -33,12 +48,38 @@ export default function ResultPage() {
         .filter((a): a is NonNullable<typeof a> => Boolean(a)),
     [contract.paymentSchedules, server.assessmentByScheduleId],
   );
-  const agg = useMemo(() => aggregateRiskAssessments(assessments, contract.contractType), [assessments, contract]);
+  const agg = useMemo(() => aggregateRiskAssessments(assessments), [assessments]);
 
   const totalForeignAmount = useMemo(
     () => contract.paymentSchedules.reduce((sum, s) => sum + (s.amount ?? 0), 0),
     [contract.paymentSchedules],
   );
+
+  // 대표(첫 결제 회차) 정산건 기준 미래 환율 예측 — 그래프와 표 전환이 데이터를
+  // 다시 요청하지 않도록, 한 번만 조회해 로컬 state에 보관하고 두 뷰가 공유한다.
+  // [구현 예정] server에 이 API가 아직 없어(1절 참고) 현재는 항상 404 →
+  // "아직 생성되지 않음" 상태로 떨어진다. 과거 환율(rate-history)로 대체하지 않는다.
+  const primaryScheduleId = contract.paymentSchedules[0]?.id;
+  const primarySettlementId = primaryScheduleId ? server.settlementIdByScheduleId[primaryScheduleId] : undefined;
+  const [forecastView, setForecastView] = useState<ForecastView | null>(null);
+  const [forecastStatus, setForecastStatus] = useState<ForecastStatus>("loading");
+  const forecastRequestedFor = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!primarySettlementId || forecastRequestedFor.current === primarySettlementId) return;
+    forecastRequestedFor.current = primarySettlementId;
+    setForecastStatus("loading");
+    getExchangeRateForecast(primarySettlementId)
+      .then((response) => {
+        setForecastView(buildForecastView(response));
+        setForecastStatus("ready");
+      })
+      .catch((e) => {
+        // 404 = "이 엔드포인트가 아직 없다/이 정산건의 예측이 아직 없다"는
+        // 예상된 상태이지 오류가 아니다 — 네트워크 실패 등 진짜 오류와 구분한다.
+        setForecastStatus(e instanceof ApiError && e.status === 404 ? "not_generated" : "unavailable");
+      });
+  }, [primarySettlementId]);
 
   if (!agg) {
     return (
@@ -57,6 +98,11 @@ export default function ResultPage() {
   const referenceScenario = agg.scenarios.find(
     (row) => row.scenario_pct === (contract.contractType === "export" ? -5 : 5),
   );
+  const referencePl = referenceScenario
+    ? contract.contractType === "export"
+      ? referenceScenario.export_pl_krw
+      : referenceScenario.import_pl_krw
+    : null;
 
   return (
     <Shell width="lg">
@@ -77,7 +123,7 @@ export default function ResultPage() {
             <p className="mt-3.5 text-sm leading-relaxed text-ink">
               최근 환율 변동성을 기준으로 분석한 결과, 환율이 5%{" "}
               {breachVerb === "하락" ? "불리하게(하락)" : "불리하게(상승)"} 움직이면 약{" "}
-              <b>{formatKrw(Math.abs(referenceScenario?.pl_krw ?? agg.expectedMaxLossTotal))}</b>의 손실이
+              <b>{formatKrw(Math.abs(referencePl ?? agg.expectedMaxLossTotal))}</b>의 손실이
               예상됩니다.
             </p>
             <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2">
@@ -90,64 +136,16 @@ export default function ResultPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-border-soft p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-[12.5px] font-bold text-ink-soft">최근 6개월 환율 추이</div>
-              <div className="flex gap-1.5">
-                <span className="rounded-xl bg-chip px-2.5 py-0.5 text-[11px] font-bold text-ink">그래프로 보기</span>
-                <span className="rounded-xl border border-border px-2.5 py-0.5 text-[11px] text-muted">표로 보기</span>
-              </div>
-            </div>
-            <svg width="100%" height="130" viewBox="0 0 400 130">
-              <rect x="0" y="35" width="400" height="45" fill="#FFF3D6" opacity="0.6" />
-              <line x1="0" y1="55" x2="400" y2="55" stroke="#898989" strokeDasharray="4" strokeWidth="1" />
-              <line x1="0" y1="88" x2="400" y2="88" stroke="#B23B2E" strokeDasharray="4" strokeWidth="1.5" />
-              <polyline
-                points="0,60 50,52 100,66 150,48 200,72 250,44 300,68 350,50 400,58"
-                fill="none"
-                stroke="#545045"
-                strokeWidth="2.2"
-              />
-            </svg>
-            <div className="text-[10.5px] leading-relaxed text-muted">
-              실선: 일별 환율 · 노란 밴드: 예상 범위 · 빨간선: 결제 예정일({formatDateDots(nearestDueDate(contract))})
-            </div>
-          </div>
+          <ExchangeRateForecastCard view={forecastView} status={forecastStatus} />
         </div>
 
         <div className="mb-5 rounded-xl border border-border-soft p-4">
           <div className="mb-2 text-[12.5px] font-bold text-ink-soft">환율 시나리오</div>
-          <table className="w-full border-collapse text-[11.5px]">
-            <thead>
-              <tr className="text-muted">
-                <th className="px-2 py-1.5 text-left">환율 변동</th>
-                <th className="px-2 py-1.5 text-left">예상 환율</th>
-                <th className="px-2 py-1.5 text-left">예상 원화 환산액</th>
-                <th className="px-2 py-1.5 text-left">기준 대비 손익</th>
-              </tr>
-            </thead>
-            <tbody>
-              {agg.scenarios.map((row) => (
-                <tr key={row.scenario_pct} className={row.scenario_pct === 0 ? "bg-accent-softer" : undefined}>
-                  <td className={"border-t border-border-soft px-2 py-1.5" + (row.scenario_pct === 0 ? " font-bold" : "")}>
-                    {row.scenario_pct === 0 ? "변동없음" : `${row.scenario_pct > 0 ? "+" : ""}${row.scenario_pct}%`}
-                  </td>
-                  <td className="border-t border-border-soft px-2 py-1.5">{formatNumber(row.projected_rate, 1)}원</td>
-                  <td className="border-t border-border-soft px-2 py-1.5">
-                    {formatKrw(agg.netExposureTotal + row.pl_krw)}
-                  </td>
-                  <td
-                    className={
-                      "border-t border-border-soft px-2 py-1.5" +
-                      (row.pl_krw > 0 ? " text-success" : row.pl_krw < 0 ? " text-danger" : "")
-                    }
-                  >
-                    {row.pl_krw === 0 ? "0원" : `${formatSignedKrw(row.pl_krw)}원`}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ScenarioSection
+            scenarios={agg.scenarios}
+            netExposureTotal={agg.netExposureTotal}
+            contractType={contract.contractType}
+          />
         </div>
 
         <details className="rounded-[10px] border border-border-soft px-4 py-3.5 text-[12.5px] text-ink-soft">
@@ -159,7 +157,8 @@ export default function ResultPage() {
             <p>· 순노출액은 정산 항목별 진단 결과의 원화 환산 노출액을 합산한 값입니다.</p>
             <p>· 위험 등급은 각 정산 항목의 진단 결과 중 가장 위험도가 높은 등급을 표시합니다.</p>
             <p>
-              · 이번 진단 기준 BEP 안전여유율(최소) {formatNumber(agg.bepSafetyMarginPctWorst, 1)}% · 97.5% ES 변동률{" "}
+              · 이번 진단 기준 BEP 안전여유율(최소){" "}
+              {formatOrDash(agg.bepSafetyMarginPctWorst, (v) => `${formatNumber(v, 1)}%`)} · 97.5% ES 변동률{" "}
               {formatNumber(agg.esPctAggregate, 1)}% · 예상 최대 손실액 {formatSignedKrw(-agg.expectedMaxLossTotal)}원 ·
               남은 영업일 {agg.holdingDaysMin}영업일
             </p>

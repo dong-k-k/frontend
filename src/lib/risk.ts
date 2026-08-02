@@ -22,6 +22,11 @@ export function formatDateDots(iso: string): string {
   return iso.replaceAll("-", ".");
 }
 
+/** 값이 없는 필드(서버 스키마상 optional) 표시용 — 실제 값이 없으면 "-"만 보여주고, 임의 기본값으로 채우지 않는다. */
+export function formatOrDash<T>(value: T | null | undefined, format: (v: T) => string): string {
+  return value === null || value === undefined ? "-" : format(value);
+}
+
 /** First schedule's currency, used as the contract's representative currency for display. */
 export function primaryCurrency(contract: ContractInfo): string {
   return contract.paymentSchedules[0]?.currency ?? "USD";
@@ -36,6 +41,13 @@ export function nearestDueDate(contract: ContractInfo): string {
 /** True only if every payment schedule's due date is adjustable. */
 export function allDueDatesAdjustable(contract: ContractInfo): boolean {
   return contract.paymentSchedules.length > 0 && contract.paymentSchedules.every((s) => s.dueDateAdjustable);
+}
+
+/** 시나리오 응답에는 이름(enum)이 없고 scenario_pct(숫자)만 있다 — 그 숫자에서
+ * 직접 파생한 라벨이며, 존재하지 않는 시나리오 이름을 지어내지 않는다. */
+export function scenarioLabel(scenarioPct: number): string {
+  if (scenarioPct === 0) return "변동없음";
+  return `${scenarioPct > 0 ? "+" : ""}${scenarioPct}%`;
 }
 
 export const RISK_GRADE_LABEL: Record<RiskGrade, string> = {

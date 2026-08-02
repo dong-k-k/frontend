@@ -17,7 +17,7 @@ import {
   VERDICT_BADGE_VARIANT,
 } from "@/lib/api";
 import type { ProductSummary } from "@/lib/api/types";
-import { allDueDatesAdjustable, formatDateDots, formatKrw, formatNumber, nearestDueDate, RISK_GRADE_LABEL } from "@/lib/risk";
+import { allDueDatesAdjustable, formatDateDots, formatKrw, formatNumber, formatOrDash, nearestDueDate, RISK_GRADE_LABEL } from "@/lib/risk";
 
 export default function RecommendationsPage() {
   const { contract, server, setServer } = useWizard();
@@ -34,7 +34,7 @@ export default function RecommendationsPage() {
         .filter((a): a is NonNullable<typeof a> => Boolean(a)),
     [contract.paymentSchedules, server.assessmentByScheduleId],
   );
-  const agg = useMemo(() => aggregateRiskAssessments(assessments, contract.contractType), [assessments, contract]);
+  const agg = useMemo(() => aggregateRiskAssessments(assessments), [assessments]);
 
   const primaryScheduleId = contract.paymentSchedules[0]?.id;
   const primarySettlementId = primaryScheduleId ? server.settlementIdByScheduleId[primaryScheduleId] : undefined;
@@ -153,7 +153,7 @@ export default function RecommendationsPage() {
             {server.recommendationReason ?? "AI 추천 사유 정보가 아직 제공되지 않았습니다."}
           </p>
           <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted">
-            근거: BEP 안전여유율(최소) {formatNumber(agg.bepSafetyMarginPctWorst, 1)}% · 결제일까지{" "}
+            근거: BEP 안전여유율(최소) {formatOrDash(agg.bepSafetyMarginPctWorst, (v) => `${formatNumber(v, 1)}%`)} · 결제일까지{" "}
             {agg.holdingDaysMin}영업일 · 예상 손실률 {formatNumber(Math.abs(agg.esPctAggregate), 1)}% ·{" "}
             {server.riskProfileResult?.profile_type ?? "-"} 성향 · 결제일 조정{" "}
             {allDueDatesAdjustable(contract) ? "가능" : "불가능"}
