@@ -194,6 +194,35 @@ export default function RecommendationsPage() {
           </div>
         )}
 
+        {server.avoidedLossByProduct && server.avoidedLossByProduct.length > 0 && (
+          <>
+            <div className="mb-1.5 text-[15px] font-extrabold text-ink">이 상품을 쓰지 않았다면?</div>
+            <p className="mb-3 text-xs text-muted">
+              AI 환율 예측 시나리오 기준으로, 추천 상품을 사용하지 않았을 때 대비 예상되는 손실 회피 효과입니다.
+            </p>
+            <div className="mb-6 grid grid-cols-3 gap-3.5">
+              {server.avoidedLossByProduct.map((card) => (
+                <div key={card.productId} className="rounded-xl border border-border-soft p-4">
+                  <div className="text-sm font-extrabold text-ink">{card.productName}</div>
+                  <div className="mb-2 text-[11px] text-muted">{card.provider}</div>
+                  {card.avoidedLossScenarios && card.avoidedLossScenarios.length > 0 ? (
+                    <div className="space-y-1">
+                      {card.avoidedLossScenarios.map((s) => (
+                        <div key={s.scenarioName} className="flex justify-between text-[11.5px] text-ink-soft">
+                          <span>{SCENARIO_NAME_LABEL[s.scenarioName] ?? s.scenarioName}</span>
+                          <b className="text-ink">{formatKrw(s.avoidedLossKrw)}</b>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-muted">AI 예측 지원 범위 밖이라 시나리오를 계산하지 못했습니다.</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+        
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-accent-softer px-6 py-4.5">
           <div>
             <div className="text-sm font-extrabold text-ink">분석 결과를 바탕으로 KB 기업금융 전문가와 상담해보세요</div>

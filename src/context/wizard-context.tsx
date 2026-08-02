@@ -8,6 +8,7 @@ import type {
   RiskAssessmentResponse,
   RiskProfileResponse,
   StrategyMixItem,
+  AvoidedLossCard,
   ApiConsultationStatus,
 } from "@/lib/api/types";
 
@@ -106,6 +107,7 @@ export interface ServerState {
   recommendationId: number | null;
   recommendationMix: StrategyMixItem[];
   recommendationReason: string | null;
+  avoidedLossByProduct: AvoidedLossCard[] | null;
   consultationRequestId: number | null;
   consultationStatus: ApiConsultationStatus | null;
 }
@@ -122,6 +124,7 @@ const initialServerState: ServerState = {
   recommendationId: null,
   recommendationMix: [],
   recommendationReason: null,
+  avoidedLossByProduct: null,
   consultationRequestId: null,
   consultationStatus: null,
 };
