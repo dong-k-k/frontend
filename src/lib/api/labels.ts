@@ -1,4 +1,4 @@
-import type { ApiMatchVerdict } from "./types";
+import type { ApiEligibilityStatus } from "./types";
 
 /**
  * The API returns raw enum-ish strings for strategy types and product
@@ -37,14 +37,23 @@ export function strategyGroupLabel(strategyGroup: string): string {
   return STRATEGY_GROUP_LABEL[strategyGroup] ?? humanize(strategyGroup);
 }
 
-export const VERDICT_LABEL: Record<ApiMatchVerdict, string> = {
-  ELIGIBLE: "자격 충족",
-  CONDITIONAL: "조건부 충족",
-  NOT_ELIGIBLE: "자격 미충족",
+export const ELIGIBILITY_LABEL: Record<ApiEligibilityStatus, string> = {
+  RECOMMENDED: "추천",
+  CONDITIONAL: "조건부 추천",
+  RM_REVIEW_REQUIRED: "RM 확인 필요",
+  NOT_RECOMMENDED: "비추천",
 };
 
-export const VERDICT_BADGE_VARIANT: Record<ApiMatchVerdict, "success" | "warning" | "neutral"> = {
-  ELIGIBLE: "success",
+export const ELIGIBILITY_BADGE_VARIANT: Record<ApiEligibilityStatus, "success" | "warning" | "neutral"> = {
+  RECOMMENDED: "success",
   CONDITIONAL: "warning",
-  NOT_ELIGIBLE: "neutral",
+  RM_REVIEW_REQUIRED: "warning",
+  NOT_RECOMMENDED: "neutral",
+};
+
+export const SCENARIO_NAME_LABEL: Record<string, string> = {
+  point: "예상 시나리오",
+  lower: "하단(비관)",
+  median: "중앙값",
+  upper: "상단(낙관)",
 };
