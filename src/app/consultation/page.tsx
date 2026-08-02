@@ -60,18 +60,23 @@ export default function ConsultationPage() {
     0,
   );
 
+  const phoneRequired = consultation.contactMethod === "PHONE";
+  const emailRequired = consultation.contactMethod === "EMAIL";
+  const branchRequired = consultation.contactMethod === "BRANCH_VISIT";
+
   const canSubmit = useMemo(
     () =>
       Boolean(
         consultation.companyName.trim() &&
           consultation.contactName.trim() &&
-          consultation.phone.trim() &&
-          consultation.email.trim() &&
+          (!phoneRequired || consultation.phone.trim()) &&
+          (!emailRequired || consultation.email.trim()) &&
+          (!branchRequired || consultation.branch.trim()) &&
           consultation.agree &&
           server.profileId &&
           server.recommendationId,
       ),
-    [consultation, server.profileId, server.recommendationId],
+    [consultation, phoneRequired, emailRequired, branchRequired, server.profileId, server.recommendationId],
   );
 
   const handleSubmit = async () => {
@@ -119,15 +124,15 @@ export default function ConsultationPage() {
           </p>
           <div className="grid grid-cols-2 gap-x-5 gap-y-4">
             <div>
-              <FieldLabel>기업명</FieldLabel>
+              <FieldLabel required>기업명</FieldLabel>
               <TextInput value={consultation.companyName} onChange={(companyName) => setConsultation({ companyName })} />
             </div>
             <div>
-              <FieldLabel>담당자명</FieldLabel>
+              <FieldLabel required>담당자명</FieldLabel>
               <TextInput value={consultation.contactName} onChange={(contactName) => setConsultation({ contactName })} />
             </div>
             <div>
-              <FieldLabel>연락처</FieldLabel>
+              <FieldLabel required={phoneRequired}>연락처</FieldLabel>
               <TextInput
                 type="tel"
                 value={consultation.phone}
@@ -136,7 +141,7 @@ export default function ConsultationPage() {
               />
             </div>
             <div>
-              <FieldLabel>이메일</FieldLabel>
+              <FieldLabel required={emailRequired}>이메일</FieldLabel>
               <TextInput type="email" value={consultation.email} onChange={(email) => setConsultation({ email })} />
             </div>
             <div>
@@ -156,8 +161,9 @@ export default function ConsultationPage() {
               />
             </div>
             <div>
-              <FieldLabel>희망 지점</FieldLabel>
+              <FieldLabel required={branchRequired}>희망 지점</FieldLabel>
               <Select value={consultation.branch} onChange={(branch) => setConsultation({ branch })}>
+                <option value="">선택 안 함</option>
                 {BRANCHES.map((b) => (
                   <option key={b} value={b}>
                     {b}

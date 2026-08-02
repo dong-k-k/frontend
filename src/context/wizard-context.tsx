@@ -82,7 +82,7 @@ const initialConsultationInfo: ConsultationInfo = {
   email: "",
   contactMethod: "PHONE",
   preferredTime: "",
-  branch: "강남기업금융센터",
+  branch: "",
   memo: "",
   agree: false,
 };
