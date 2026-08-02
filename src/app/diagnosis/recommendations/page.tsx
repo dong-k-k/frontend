@@ -9,6 +9,7 @@ import { aggregateRiskAssessments } from "@/lib/api/riskAggregate";
 import {
   createProductMatch,
   createStrategyRecommendation,
+  downloadStrategyReport,
   ApiError,
   ELIGIBILITY_LABEL,
   ELIGIBILITY_BADGE_VARIANT,
@@ -29,6 +30,7 @@ export default function RecommendationsPage() {
   const { contract, server, setServer } = useWizard();
   const [loading, setLoading] = useState(!server.recommendationId);
   const [error, setError] = useState<string | null>(null);
+  const [pdfDownloading, setPdfDownloading] = useState(false);
   const startedRef = useRef(false);
 
   const assessments = useMemo(
@@ -78,6 +80,26 @@ export default function RecommendationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally runs once on mount
   }, []);
 
+  const handleDownloadPdf = async () => {
+    if (!server.recommendationId || pdfDownloading) return;
+    setPdfDownloading(true);
+    try {
+      const blob = await downloadStrategyReport(server.recommendationId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `환리스크진단_추천리포트_${server.recommendationId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(e instanceof ApiError || e instanceof Error ? e.message : "PDF 리포트를 다운로드하지 못했습니다.");
+    } finally {
+      setPdfDownloading(false);
+    }
+  };
+
   const rankedItems = useMemo(
     () => [...server.matchItems].sort((a, b) => b.fit_score - a.fit_score),
     [server.matchItems],
@@ -109,9 +131,14 @@ export default function RecommendationsPage() {
       <ShellHeader
         step={4}
         right={
-          <span className="rounded-full border border-disabled px-2.5 py-1.5 text-[11px] text-ink-soft">
-            PDF 다운로드
-          </span>
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={!server.recommendationId || pdfDownloading}
+            className="rounded-full border border-disabled px-2.5 py-1.5 text-[11px] text-ink-soft transition-colors hover:bg-page disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {pdfDownloading ? "다운로드 중..." : "PDF 다운로드"}
+          </button>
         }
       />
       <div className="px-10 py-8">
