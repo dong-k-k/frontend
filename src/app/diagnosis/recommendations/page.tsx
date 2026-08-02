@@ -13,19 +13,66 @@ import {
   ApiError,
   ELIGIBILITY_LABEL,
   ELIGIBILITY_BADGE_VARIANT,
-  SCENARIO_NAME_LABEL,
+  scenarioNameLabel,
+  scenarioConditionDescription,
   parseProductMatchReasons,
 } from "@/lib/api";
+import type { AvoidedLossScenario } from "@/lib/api";
 
 import {
   allDueDatesAdjustable,
   formatDateDots,
   formatKrw,
+  formatManwon,
   formatNumber,
   formatOrDash,
+  formatSignedWon,
   nearestDueDate,
   RISK_GRADE_LABEL,
 } from "@/lib/risk";
+
+/** "손실 회피액"(avoidedLossKrw)을 "이 상품을 쓰지 않았다면 어떻게 됐을지" 손익으로 뒤집어 보여준다.
+ * 회피액이 양수면 상품 덕분에 막은 손실이 있었다는 뜻이므로, 안 썼다면 그만큼 손실(-)이 났을 것이고,
+ * 회피액이 음수면 오히려 안 쓰는 편이 나았을 것이므로 그만큼 이익(+)이 됐을 것이다. 계산 자체는 그대로 두고
+ * 부호만 사용자 관점("안 썼다면 손익이 얼마?")으로 재해석하는 표시 전용 로직이다. */
+const NEUTRAL_THRESHOLD_KRW = 10000;
+
+type ScenarioImpact = "loss" | "gain" | "neutral";
+
+function classifyImpact(pnlIfNotUsed: number): ScenarioImpact {
+  if (pnlIfNotUsed <= -NEUTRAL_THRESHOLD_KRW) return "loss";
+  if (pnlIfNotUsed >= NEUTRAL_THRESHOLD_KRW) return "gain";
+  return "neutral";
+}
+
+const IMPACT_STYLE: Record<ScenarioImpact, { amountClass: string; headline: string }> = {
+  loss: { amountClass: "text-danger", headline: "예상 손실" },
+  gain: { amountClass: "text-success-text", headline: "예상 이익" },
+  neutral: { amountClass: "text-ink-soft", headline: "예상 손익 변화 미미" },
+};
+
+function impactSentence(impact: ScenarioImpact, pnlIfNotUsed: number): string {
+  if (impact === "loss") return `약 ${formatManwon(pnlIfNotUsed)}의 손실이 발생할 수 있습니다.`;
+  if (impact === "gain") return `약 ${formatManwon(pnlIfNotUsed)}의 이익이 발생할 수 있습니다.`;
+  return "값이 0에 가까워 큰 손익 변화가 예상되지 않습니다.";
+}
+
+function AvoidedLossScenarioItem({ scenario }: { scenario: AvoidedLossScenario }) {
+  const pnlIfNotUsed = -scenario.avoidedLossKrw;
+  const impact = classifyImpact(pnlIfNotUsed);
+  const style = IMPACT_STYLE[impact];
+  return (
+    <div className="rounded-lg border border-border-soft bg-surface p-3">
+      <div className="text-[10.5px] font-bold text-ink-soft">{scenarioNameLabel(scenario.scenarioName)}</div>
+      <div className="mt-1.5 text-[11px] font-bold text-ink-soft">{style.headline}</div>
+      <div className={`mt-0.5 text-[15px] font-extrabold ${style.amountClass}`}>{formatSignedWon(pnlIfNotUsed)}</div>
+      <p className="mt-1 text-[11px] leading-relaxed text-ink-soft">{impactSentence(impact, pnlIfNotUsed)}</p>
+      <p className="mt-1.5 text-[10.5px] leading-relaxed text-muted">
+        {scenarioConditionDescription(scenario.scenarioName)}
+      </p>
+    </div>
+  );
+}
 
 /** dongkk-server가 내려주는 `reason_text`(내부 코드가 섞인 문장을 "; "로 이어붙인
  * 문자열)를 사람이 읽기 좋은 문장 목록으로 바꿔 보여준다. 실제로 표시할 문장이
@@ -235,20 +282,18 @@ export default function RecommendationsPage() {
           <>
             <div className="mb-1.5 text-[15px] font-extrabold text-ink">이 상품을 쓰지 않았다면?</div>
             <p className="mb-3 text-xs text-muted">
-              AI 환율 예측 시나리오 기준으로, 추천 상품을 사용하지 않았을 때 대비 예상되는 손실 회피 효과입니다.
+              AI 환율 예측 시나리오 기준으로, 추천 상품을 사용하지 않았을 경우 예상되는 손익입니다. 실제 결과는 환율
+              움직임에 따라 달라질 수 있습니다.
             </p>
-            <div className="mb-6 grid grid-cols-3 gap-3.5">
+            <div className="mb-6 space-y-4">
               {server.avoidedLossByProduct.map((card) => (
                 <div key={card.productId} className="rounded-xl border border-border-soft p-4">
                   <div className="text-sm font-extrabold text-ink">{card.productName}</div>
-                  <div className="mb-2 text-[11px] text-muted">{card.provider}</div>
+                  <div className="mb-3 text-[11px] text-muted">{card.provider}</div>
                   {card.avoidedLossScenarios && card.avoidedLossScenarios.length > 0 ? (
-                    <div className="space-y-1">
+                    <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
                       {card.avoidedLossScenarios.map((s) => (
-                        <div key={s.scenarioName} className="flex justify-between text-[11.5px] text-ink-soft">
-                          <span>{SCENARIO_NAME_LABEL[s.scenarioName] ?? s.scenarioName}</span>
-                          <b className="text-ink">{formatKrw(s.avoidedLossKrw)}</b>
-                        </div>
+                        <AvoidedLossScenarioItem key={s.scenarioName} scenario={s} />
                       ))}
                     </div>
                   ) : (

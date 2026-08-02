@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatOrDash, formatSignedKrw, scenarioLabel } from "./risk";
+import { formatManwon, formatOrDash, formatSignedKrw, formatSignedWon, scenarioLabel } from "./risk";
 
 describe("formatOrDash", () => {
   it("formats a present value", () => {
@@ -41,5 +41,26 @@ describe("formatSignedKrw", () => {
 
   it("shows no sign for zero", () => {
     expect(formatSignedKrw(0)).toBe("0");
+  });
+});
+
+describe("formatSignedWon", () => {
+  it("prefixes gains with + and a won sign", () => {
+    expect(formatSignedWon(1120000)).toBe("+₩1,120,000");
+  });
+
+  it("prefixes losses with - and a won sign", () => {
+    expect(formatSignedWon(-2340000)).toBe("-₩2,340,000");
+  });
+
+  it("shows no sign for zero", () => {
+    expect(formatSignedWon(0)).toBe("₩0");
+  });
+});
+
+describe("formatManwon", () => {
+  it("converts to 만원 units, dropping the sign", () => {
+    expect(formatManwon(-2340000)).toBe("234만원");
+    expect(formatManwon(1120000)).toBe("112만원");
   });
 });

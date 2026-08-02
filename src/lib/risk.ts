@@ -10,6 +10,19 @@ export function formatSignedKrw(value: number): string {
   return `${sign}${rounded.toLocaleString("ko-KR")}`;
 }
 
+/** "₩" 접두 + 부호를 함께 붙인 표기 (예: "+₩1,120,000" / "-₩2,340,000"). */
+export function formatSignedWon(value: number): string {
+  const rounded = Math.round(value);
+  const sign = rounded > 0 ? "+" : rounded < 0 ? "-" : "";
+  return `${sign}₩${Math.abs(rounded).toLocaleString("ko-KR")}`;
+}
+
+/** 큰 금액을 문장 속에서 바로 읽히게 만드는 "만원" 단위 표기 (예: "약 234만원"). */
+export function formatManwon(value: number): string {
+  const manwon = Math.round(Math.abs(value) / 10000);
+  return `${manwon.toLocaleString("ko-KR")}만원`;
+}
+
 export function formatNumber(value: number, fractionDigits = 0): string {
   return value.toLocaleString("ko-KR", {
     minimumFractionDigits: fractionDigits,
