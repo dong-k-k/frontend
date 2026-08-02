@@ -14,6 +14,7 @@ import {
   ELIGIBILITY_LABEL,
   ELIGIBILITY_BADGE_VARIANT,
   SCENARIO_NAME_LABEL,
+  parseProductMatchReasons,
 } from "@/lib/api";
 
 import {
@@ -25,6 +26,24 @@ import {
   nearestDueDate,
   RISK_GRADE_LABEL,
 } from "@/lib/risk";
+
+/** dongkk-server가 내려주는 `reason_text`(내부 코드가 섞인 문장을 "; "로 이어붙인
+ * 문자열)를 사람이 읽기 좋은 문장 목록으로 바꿔 보여준다. 실제로 표시할 문장이
+ * 없으면 아무것도 렌더링하지 않는다(없는 근거를 지어내지 않음). */
+function ProductMatchReasons({ reasonText }: { reasonText: string | null }) {
+  const reasons = parseProductMatchReasons(reasonText);
+  if (reasons.length === 0) return null;
+  return (
+    <div className="mt-2">
+      <div className="text-[10.5px] font-bold text-ink-soft">추천 이유</div>
+      <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[11.5px] leading-relaxed text-ink-soft">
+        {reasons.map((reason, idx) => (
+          <li key={idx}>{reason}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export default function RecommendationsPage() {
   const { contract, server, setServer } = useWizard();
@@ -224,7 +243,7 @@ export default function RecommendationsPage() {
                 </div>
                 <div className="mt-2 text-sm font-extrabold text-ink">{item.product_name}</div>
                 <div className="text-[11px] text-muted">{item.provider}</div>
-                <div className="mt-2 text-[11.5px] text-ink-soft">{item.reason_text}</div>
+                <ProductMatchReasons reasonText={item.reason_text} />
               </div>
             ))}
           </div>

@@ -8,6 +8,7 @@ export * from "./contracts";
 export * from "./riskAssessments";
 export * from "./riskProfiles";
 export * from "./productMatches";
+export * from "./productMatchReasons";
 //export * from "./products";
 //export * from "./adminProducts";
 export * from "./strategyRecommendations";
