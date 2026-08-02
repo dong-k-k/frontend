@@ -2,7 +2,7 @@
 
 import type { ContractType } from "@/lib/types";
 import type { AggregatedScenario } from "@/lib/api/riskAggregate";
-import { formatKrw, formatNumber, formatOrDash, formatSignedKrw, scenarioLabel } from "@/lib/risk";
+import { formatKrw, formatNumber, formatSignedKrw, scenarioLabel } from "@/lib/risk";
 
 /** 환율 시나리오는 표만 표시한다(차트 없음). 시나리오는 날짜가 아니라 환율
  * 변동률(scenario_pct)로 구분되는 값이라 그래프/표 전환 기능도 두지 않는다. */
@@ -29,7 +29,6 @@ export function ScenarioSection({
             <th className="px-2 py-1.5 text-left">수출 예상 손익</th>
             <th className="px-2 py-1.5 text-left">수입 예상 손익</th>
             <th className="px-2 py-1.5 text-left">예상 원화 환산액</th>
-            <th className="px-2 py-1.5 text-left">설명</th>
           </tr>
         </thead>
         <tbody>
@@ -60,9 +59,6 @@ export function ScenarioSection({
                   {row.import_pl_krw === 0 ? "0원" : `${formatSignedKrw(row.import_pl_krw)}원`}
                 </td>
                 <td className="border-t border-border-soft px-2 py-1.5">{formatKrw(netExposureTotal + directionalPl)}</td>
-                <td className="border-t border-border-soft px-2 py-1.5 text-ink-soft">
-                  {formatOrDash(row.remark, (v) => v)}
-                </td>
               </tr>
             );
           })}
