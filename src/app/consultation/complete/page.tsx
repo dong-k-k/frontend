@@ -3,6 +3,7 @@
 import { Shell, ShellHeader } from "@/components/ui/Shell";
 import { LinkButton, Button } from "@/components/ui/Button";
 import { useWizard } from "@/context/wizard-context";
+import { useDownloadStrategyReport } from "@/hooks/useDownloadStrategyReport";
 
 const CONTACT_METHOD_LABEL: Record<string, string> = {
   PHONE: "전화",
@@ -20,6 +21,9 @@ const CONSULTATION_STATUS_LABEL: Record<string, string> = {
 
 export default function ConsultationCompletePage() {
   const { consultation, server, reset } = useWizard();
+  const { downloading: pdfDownloading, download: handleDownloadPdf } = useDownloadStrategyReport(
+    server.recommendationId,
+  );
 
   if (!server.consultationRequestId) {
     return (
@@ -68,8 +72,14 @@ export default function ConsultationCompletePage() {
           담당 RM이 신청하신 금융상품의 가입 조건과 필요 서류를 안내해드릴 예정입니다.
         </p>
         <div className="flex justify-center gap-3">
-          <Button variant="secondary" size="sm" type="button">
-            PDF 리포트 다시 다운로드
+          <Button
+            variant="secondary"
+            size="sm"
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={!server.recommendationId || pdfDownloading}
+          >
+            {pdfDownloading ? "다운로드 중..." : "PDF 리포트 다시 다운로드"}
           </Button>
           <LinkButton href="/" size="sm" onClick={() => reset()}>
             처음으로

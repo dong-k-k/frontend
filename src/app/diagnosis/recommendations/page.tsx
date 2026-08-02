@@ -5,11 +5,11 @@ import { Shell, ShellHeader } from "@/components/ui/Shell";
 import { LinkButton } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { useWizard } from "@/context/wizard-context";
+import { useDownloadStrategyReport } from "@/hooks/useDownloadStrategyReport";
 import { aggregateRiskAssessments } from "@/lib/api/riskAggregate";
 import {
   createProductMatch,
   createStrategyRecommendation,
-  downloadStrategyReport,
   ApiError,
   ELIGIBILITY_LABEL,
   ELIGIBILITY_BADGE_VARIANT,
@@ -49,7 +49,9 @@ export default function RecommendationsPage() {
   const { contract, server, setServer } = useWizard();
   const [loading, setLoading] = useState(!server.recommendationId);
   const [error, setError] = useState<string | null>(null);
-  const [pdfDownloading, setPdfDownloading] = useState(false);
+  const { downloading: pdfDownloading, download: handleDownloadPdf } = useDownloadStrategyReport(
+    server.recommendationId,
+  );
   const startedRef = useRef(false);
 
   const assessments = useMemo(
@@ -98,26 +100,6 @@ export default function RecommendationsPage() {
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally runs once on mount
   }, []);
-
-  const handleDownloadPdf = async () => {
-    if (!server.recommendationId || pdfDownloading) return;
-    setPdfDownloading(true);
-    try {
-      const blob = await downloadStrategyReport(server.recommendationId);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `환리스크진단_추천리포트_${server.recommendationId}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      alert(e instanceof ApiError || e instanceof Error ? e.message : "PDF 리포트를 다운로드하지 못했습니다.");
-    } finally {
-      setPdfDownloading(false);
-    }
-  };
 
   const rankedItems = useMemo(
     () => [...server.matchItems].sort((a, b) => b.fit_score - a.fit_score),
