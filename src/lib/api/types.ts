@@ -86,13 +86,71 @@ export interface RiskAssessmentResponse {
   valuation_pl: number;
   es_pct: number;
   expected_max_loss: number;
-  bep_gap: number;
-  bep_safety_margin_pct: number;
+  /** server schema: `Decimal | None` — null when the settlement item has no bep_rate. */
+  bep_gap: number | null;
+  /** server schema: `Decimal | None` — null when the settlement item has no bep_rate. */
+  bep_safety_margin_pct: number | null;
   risk_grade: ApiRiskGrade;
   recommended_action: string;
   data_confidence: ApiDataConfidence;
   created_at: string;
   scenarios: RiskScenario[];
+}
+
+/** `GET /api/v1/settlement-items/{settlement_id}/rate-history` (app/risk/schemas.py::RatePoint). */
+export interface RatePoint {
+  date: string;
+  rate: number;
+}
+
+/** `GET /api/v1/settlement-items/{settlement_id}/rate-history` (app/risk/schemas.py::RateHistoryResponse). */
+export interface RateHistoryResponse {
+  settlement_id: number;
+  currency: string;
+  bep_rate: number | null;
+  confidence_band_pct: number | null;
+  source: string;
+  as_of: string;
+  series: RatePoint[];
+}
+
+/**
+ * [구현 예정] 미래 환율 예측 — dongkk-server에 아직 이 API가 없다(app/ 전체에
+ * "forecast" 문자열 grep 0건, 2026-08-03 재확인). 아래는 dongkk-ai/fx-chronos의
+ * 실제 필드를 기준으로 설계한 목표 DTO다:
+ *
+ *   fx-chronos ForecastScenario(fx-chronos/src/forecast_provider.py:46-61)의
+ *   forecast_dates/point_forecast/lower_scenario/median_scenario/upper_scenario
+ *   (모두 날짜 개수만큼의 병렬 배열)를, dongkk-server가 이미 쓰는
+ *   RateHistoryResponse.series 패턴과 동일하게 "날짜별 객체 배열"로 바꾼 형태.
+ *
+ * 실제 엔드포인트가 생기기 전까지 이 타입은 목표 계약일 뿐이며, 지어낸 값을
+ * 채우는 데 쓰지 않는다(7절 — 빈 상태로 처리).
+ */
+export interface ForecastPoint {
+  date: string;
+  /** fx-chronos point_forecast(앙상블 점 예측) — "중앙 예측 환율"로 표시. */
+  point_rate: number;
+  /** fx-chronos lower_scenario. 분위수 예측이 없는 실행에서는 null. */
+  lower_rate: number | null;
+  /** fx-chronos median_scenario. 현재 화면에서는 그래프·표에 그리지 않고 타입에만 보존. */
+  median_rate: number | null;
+  /** fx-chronos upper_scenario. 분위수 예측이 없는 실행에서는 null. */
+  upper_rate: number | null;
+}
+
+/** [구현 예정] `GET /api/v1/settlement-items/{settlement_id}/rate-forecast` (목표 경로 — 아직 서버에 없음). */
+export interface RateForecastResponse {
+  settlement_id: number;
+  currency: string;
+  /** fx-chronos forecast_origin — 이 예측이 만들어진 기준일. */
+  forecast_origin: string;
+  /** "기준환율" — forecast_origin 시점의 환율. 서버가 못 채우면 null. */
+  reference_rate: number | null;
+  /** "손익분기환율" — settlement_item.bep_rate. */
+  bep_rate: number | null;
+  model_name: string | null;
+  series: ForecastPoint[];
 }
 
 export interface RiskProfileRequest {
