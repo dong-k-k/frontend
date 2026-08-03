@@ -59,7 +59,7 @@ export const ELIGIBILITY_BADGE_VARIANT: Record<ApiEligibilityStatus, "success" |
  */
 export type ScenarioKind = "point" | "lower" | "median" | "upper";
 
-function classifyScenarioKind(scenarioName: string): ScenarioKind | null {
+export function classifyScenarioKind(scenarioName: string): ScenarioKind | null {
   if (scenarioName === "point" || scenarioName.includes("AI 예상")) return "point";
   if (scenarioName === "lower" || scenarioName.includes("낮")) return "lower";
   if (scenarioName === "median" || scenarioName.includes("중간")) return "median";

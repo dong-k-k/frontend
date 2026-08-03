@@ -15,6 +15,7 @@ import {
   ELIGIBILITY_BADGE_VARIANT,
   scenarioNameLabel,
   scenarioConditionDescription,
+  classifyScenarioKind,
   parseProductMatchReasons,
 } from "@/lib/api";
 import type { AvoidedLossScenario } from "@/lib/api";
@@ -55,6 +56,13 @@ function impactSentence(impact: ScenarioImpact, pnlIfNotUsed: number): string {
   if (impact === "loss") return `약 ${formatManwon(pnlIfNotUsed)}의 손실이 발생할 수 있습니다.`;
   if (impact === "gain") return `약 ${formatManwon(pnlIfNotUsed)}의 이익이 발생할 수 있습니다.`;
   return "값이 0에 가까워 큰 손익 변화가 예상되지 않습니다.";
+}
+
+/** "환율 유지 시나리오"(median)는 fx-chronos의 point 예측이 median 분위수와 동일하게
+ * 계산되고 있어(ALPHA=1.0) "AI 예상 환율"(point)과 항상 같은 값으로 나온다 — 두 카드가
+ * 중복으로 보이는 걸 막기 위해 화면에서만 제외한다(계산·API 데이터는 그대로 유지). */
+function isDuplicateMedianScenario(scenarioName: string): boolean {
+  return classifyScenarioKind(scenarioName) === "median";
 }
 
 function AvoidedLossScenarioItem({ scenario }: { scenario: AvoidedLossScenario }) {
@@ -286,21 +294,24 @@ export default function RecommendationsPage() {
               움직임에 따라 달라질 수 있습니다.
             </p>
             <div className="mb-6 space-y-4">
-              {server.avoidedLossByProduct.map((card) => (
-                <div key={card.productId} className="rounded-xl border border-border-soft p-4">
-                  <div className="text-sm font-extrabold text-ink">{card.productName}</div>
-                  <div className="mb-3 text-[11px] text-muted">{card.provider}</div>
-                  {card.avoidedLossScenarios && card.avoidedLossScenarios.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-                      {card.avoidedLossScenarios.map((s) => (
-                        <AvoidedLossScenarioItem key={s.scenarioName} scenario={s} />
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-muted">AI 예측 지원 범위 밖이라 시나리오를 계산하지 못했습니다.</p>
-                  )}
-                </div>
-              ))}
+              {server.avoidedLossByProduct.map((card) => {
+                const scenarios = card.avoidedLossScenarios?.filter((s) => !isDuplicateMedianScenario(s.scenarioName));
+                return (
+                  <div key={card.productId} className="rounded-xl border border-border-soft p-4">
+                    <div className="text-sm font-extrabold text-ink">{card.productName}</div>
+                    <div className="mb-3 text-[11px] text-muted">{card.provider}</div>
+                    {scenarios && scenarios.length > 0 ? (
+                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                        {scenarios.map((s) => (
+                          <AvoidedLossScenarioItem key={s.scenarioName} scenario={s} />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-muted">AI 예측 지원 범위 밖이라 시나리오를 계산하지 못했습니다.</p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </>
         )}
