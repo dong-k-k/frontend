@@ -39,7 +39,7 @@ export default function CompanyInfoPage() {
 
   return (
     <Shell>
-      <ShellHeader step={1} right={<span>✓ 임시저장됨</span>} />
+      <ShellHeader step={1} />
       <div className="px-10 py-9">
         <h2 className="mb-1.5 text-xl font-bold text-ink">기업 기본정보를 알려주세요</h2>
         <p className="mb-6 text-[13px] text-muted">
@@ -129,17 +129,12 @@ export default function CompanyInfoPage() {
           </LinkButton>
         }
         right={
-          <>
-            <Button variant="secondary" size="sm" type="button">
-              임시저장
-            </Button>
-            <Button
-              disabled={!canProceed}
-              onClick={() => router.push("/diagnosis/contract")}
-            >
-              다음: 계약정보 입력
-            </Button>
-          </>
+          <Button
+            disabled={!canProceed}
+            onClick={() => router.push("/diagnosis/contract")}
+          >
+            다음: 계약정보 입력
+          </Button>
         }
       />
     </Shell>

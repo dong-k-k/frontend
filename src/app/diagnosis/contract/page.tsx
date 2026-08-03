@@ -177,7 +177,7 @@ export default function ContractInfoPage() {
 
   return (
     <Shell>
-      <ShellHeader step={1} right={<span>✓ 임시저장됨</span>} />
+      <ShellHeader step={1} />
       <div className="px-10 py-9">
         <h2 className="mb-1.5 text-xl font-bold text-ink">
           체결된 계약 정보를 알려주세요
@@ -263,14 +263,9 @@ export default function ContractInfoPage() {
           </LinkButton>
         }
         right={
-          <>
-            <Button variant="secondary" size="sm" type="button">
-              임시저장
-            </Button>
-            <Button disabled={!canProceed || submitting} onClick={handleAnalyze}>
-              {submitting ? "저장 중..." : "분석 시작"}
-            </Button>
-          </>
+          <Button disabled={!canProceed || submitting} onClick={handleAnalyze}>
+            {submitting ? "저장 중..." : "분석 시작"}
+          </Button>
         }
       />
     </Shell>

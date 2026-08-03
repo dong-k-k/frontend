@@ -107,7 +107,7 @@ export default function AnalyzingPage() {
 
   return (
     <Shell>
-      <ShellHeader step={1} right={<span>✓ 임시저장됨</span>} />
+      <ShellHeader step={1} />
       <div className="px-14 py-14 text-center">
         {error ? (
           <>
